@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
@@ -31,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,8 +49,14 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.ChangePasswordResult
+import com.example.gadgetmover.data.supabase
 import com.example.gadgetmover.screen.components.CreatePasswordDialog
 import com.example.gadgetmover.screen.components.PasswordConfirmDialog
+import io.github.jan.supabase.auth.user.Identity
+import io.github.jan.supabase.compose.auth.ComposeAuth
+import io.github.jan.supabase.compose.auth.composable.NativeSignInResult
+import io.github.jan.supabase.compose.auth.composable.rememberSignInWithGoogle
+import io.github.jan.supabase.compose.auth.composeAuth
 import kotlinx.coroutines.launch
 
 /**
@@ -72,13 +81,52 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
     var isSaving by rememberSaveable { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
     var showCreatePassword by remember { mutableStateOf(false) }
+    var googleIdentity by remember { mutableStateOf<Identity?>(null) }
+    var showUnlinkGoogleConfirm by remember { mutableStateOf(false) }
+    var unlinkingGoogle by remember { mutableStateOf(false) }
+    var linkingGoogle by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    suspend fun refreshGoogleIdentity() {
+        googleIdentity = AuthRepository.currentIdentities().firstOrNull { it.provider == "google" }
+    }
+
+    LaunchedEffect(currentUser.id) { refreshGoogleIdentity() }
+
+    // Reuses the same native Credential Manager flow as "Continue with Google" on the login
+    // screen, but with LINK_IDENTITY_CALLBACK instead of the default sign-in callback — this
+    // attaches Google to the already-logged-in account rather than starting a new session.
+    val linkGoogle = supabase.composeAuth.rememberSignInWithGoogle(
+        onResult = { result ->
+            when (result) {
+                is NativeSignInResult.Success -> scope.launch {
+                    linkingGoogle = false
+                    refreshGoogleIdentity()
+                    snackbarHostState.showSnackbar("Google account linked")
+                }
+                is NativeSignInResult.ClosedByUser -> linkingGoogle = false
+                is NativeSignInResult.NetworkError -> {
+                    linkingGoogle = false
+                    scope.launch { snackbarHostState.showSnackbar("Network error — please try again") }
+                }
+                is NativeSignInResult.Error -> {
+                    linkingGoogle = false
+                    scope.launch { snackbarHostState.showSnackbar("Couldn't link Google — that account may already be linked elsewhere") }
+                }
+            }
+        },
+        onIdToken = ComposeAuth.LINK_IDENTITY_CALLBACK
+    )
 
     val isDirty = name != currentUser.name || userId != currentUser.userId || phone != currentUser.phone
     val isValid = name.isNotBlank() && userId.isNotBlank()
 
     fun requestSave() {
+        if (!currentUser.hasPassword) {
+            scope.launch { snackbarHostState.showSnackbar("Create a password below first to save changes") }
+            return
+        }
         if (userId == currentUser.userId) {
             userIdError = null
             showConfirmSave = true
@@ -114,8 +162,17 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
+            if (!currentUser.hasPassword) {
+                Text(
+                    "Create a password below first to edit your profile.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             LabeledField("Email") {
                 OutlinedTextField(
                     value = currentUser.email,
@@ -133,7 +190,8 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                     onValueChange = { name = it },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    singleLine = true
+                    singleLine = true,
+                    enabled = currentUser.hasPassword
                 )
             }
             LabeledField("Username") {
@@ -143,6 +201,7 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
+                    enabled = currentUser.hasPassword,
                     prefix = { Text("@") },
                     isError = userIdError != null,
                     supportingText = userIdError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } }
@@ -155,6 +214,7 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
+                    enabled = currentUser.hasPassword,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
                 )
             }
@@ -162,7 +222,7 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = ::requestSave,
-                enabled = isDirty && isValid && !isSaving && !checkingUserId,
+                enabled = currentUser.hasPassword && isDirty && isValid && !isSaving && !checkingUserId,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
@@ -200,6 +260,52 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                     Text("Create Password")
                 }
             }
+
+            Spacer(modifier = Modifier.height(28.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(20.dp))
+            Text("Google Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            val identity = googleIdentity
+            if (identity != null) {
+                Text(
+                    "Your account is connected to Google. Unlinking it means you'll only be able to log in with your email and password.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { showUnlinkGoogleConfirm = true },
+                    enabled = !unlinkingGoogle,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    if (unlinkingGoogle) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Text("Unlink Google Account")
+                    }
+                }
+            } else {
+                Text(
+                    "Link your Google account for a faster, one-tap log in next time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { linkingGoogle = true; linkGoogle.startFlow() },
+                    enabled = !linkingGoogle,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (linkingGoogle) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                    } else {
+                        Text("Link Google Account")
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 
@@ -239,6 +345,46 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
             onCreated = {
                 showCreatePassword = false
                 scope.launch { snackbarHostState.showSnackbar("Password created") }
+            }
+        )
+    }
+
+    if (showUnlinkGoogleConfirm) {
+        val identity = googleIdentity
+        AlertDialog(
+            onDismissRequest = { if (!unlinkingGoogle) showUnlinkGoogleConfirm = false },
+            title = { Text("Unlink Google account?") },
+            text = { Text("You'll only be able to log in with your email and password afterward.") },
+            confirmButton = {
+                Button(
+                    enabled = !unlinkingGoogle && identity != null,
+                    onClick = {
+                        val identityId = identity?.identityId ?: return@Button
+                        unlinkingGoogle = true
+                        scope.launch {
+                            val success = AuthRepository.unlinkIdentity(identityId)
+                            unlinkingGoogle = false
+                            showUnlinkGoogleConfirm = false
+                            if (success) {
+                                googleIdentity = null
+                                snackbarHostState.showSnackbar("Google account unlinked")
+                            } else {
+                                snackbarHostState.showSnackbar(
+                                    if (!currentUser.hasPassword) {
+                                        "Create a password above first — you need another way to sign in before unlinking Google"
+                                    } else {
+                                        "Couldn't unlink your Google account. Please try again."
+                                    }
+                                )
+                            }
+                        }
+                    }
+                ) {
+                    if (unlinkingGoogle) CircularProgressIndicator(modifier = Modifier.height(18.dp), color = Color.White) else Text("Unlink")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnlinkGoogleConfirm = false }, enabled = !unlinkingGoogle) { Text("Cancel") }
             }
         )
     }

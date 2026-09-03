@@ -33,6 +33,7 @@ import com.example.gadgetmover.model.WalletTransactionType
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.user.Identity
 import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
@@ -415,6 +416,30 @@ object AuthRepository {
                 filter { eq("id", userId) }
             }
             currentUser.value = currentUser.value?.copy(hasPassword = true)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * The caller's linked auth identities (Google, email, ...) straight off the live GoTrue
+     * session — this is session state, not app profile data, so it isn't mirrored onto [User]
+     * the way [User.hasPassword] is. Used by Account Information to decide whether to offer
+     * unlinking a Google account.
+     */
+    suspend fun currentIdentities(): List<Identity> =
+        supabase.auth.currentUserOrNull()?.identities.orEmpty()
+
+    /**
+     * Unlinks [identityId] (an [Identity.identityId]) from the current account — e.g. detaching
+     * Google after the user has a password to fall back on. GoTrue itself refuses to unlink an
+     * account's only identity, so this can legitimately fail for a Google-only user with no
+     * password yet; the caller should guide them to create one first in that case.
+     */
+    suspend fun unlinkIdentity(identityId: String): Boolean {
+        return try {
+            supabase.auth.unlinkIdentity(identityId)
             true
         } catch (e: Exception) {
             false
