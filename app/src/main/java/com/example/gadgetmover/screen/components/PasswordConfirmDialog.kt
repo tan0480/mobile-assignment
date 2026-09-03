@@ -1,10 +1,13 @@
 package com.example.gadgetmover.screen.components
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -17,39 +20,88 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import com.example.gadgetmover.data.AuthRepository
+import com.example.gadgetmover.data.BiometricPreferences
+import com.example.gadgetmover.util.BiometricAuthResult
+import com.example.gadgetmover.util.BiometricAvailability
+import com.example.gadgetmover.util.authenticateWithBiometrics
+import com.example.gadgetmover.util.biometricAvailability
 import kotlinx.coroutines.launch
 
 /**
- * Prompts for the account password and calls [onConfirmed] only after [AuthRepository.verifyPassword]
- * succeeds — used to gate money-moving actions (wallet checkout payment, withdrawals) that don't
- * already go through Stripe's own card-entry step.
+ * Confirms it's really the account holder before a money-moving action (wallet checkout payment,
+ * withdrawals) that doesn't already go through Stripe's own card-entry step. Tries a fingerprint
+ * check first when the user has turned that on in Settings and the device supports it; either way
+ * the password field underneath stays available as a fallback, and [onConfirmed] only fires once
+ * one of the two has actually succeeded — biometric success never bypasses
+ * [AuthRepository.verifyPassword] silently, it's just a faster path to the same gate.
  */
 @Composable
 fun PasswordConfirmDialog(
     message: String,
     onDismiss: () -> Unit,
     onConfirmed: () -> Unit,
-    title: String = "Confirm your password"
+    title: String = "Confirm your password",
+    /** False when a caller already handles biometrics itself (e.g. the app-unlock screen tries it first and only falls back to this dialog for the password field) and doesn't want a second, redundant prompt. */
+    allowBiometric: Boolean = true
 ) {
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val biometricAvailable = allowBiometric &&
+        activity != null &&
+        BiometricPreferences.isPaymentsEnabled(context) &&
+        biometricAvailability(activity) == BiometricAvailability.AVAILABLE
+
+    fun tryBiometric() {
+        if (activity == null) return
+        busy = true
+        scope.launch {
+            when (val result = authenticateWithBiometrics(activity, "Confirm payment", message, negativeButtonText = "Use password")) {
+                is BiometricAuthResult.Success -> onConfirmed()
+                is BiometricAuthResult.Failed -> error = result.message
+                is BiometricAuthResult.Cancelled -> Unit // falls back to the password field below, silently
+            }
+            busy = false
+        }
+    }
+
+    // Offers the fingerprint prompt right away rather than making the user reach for the button —
+    // "Use password" in the prompt's negative button, or just backing out of it, drops back to
+    // this same dialog with the password field still there.
+    LaunchedEffect(biometricAvailable) {
+        if (biometricAvailable) tryBiometric()
+    }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(title) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, modifier = androidx.compose.ui.Modifier.weight(1f))
+                if (biometricAvailable) {
+                    IconButton(onClick = ::tryBiometric, enabled = !busy) {
+                        Icon(Icons.Filled.Fingerprint, contentDescription = "Use fingerprint")
+                    }
+                }
+            }
+        },
         text = {
             Column {
                 Text(message, style = MaterialTheme.typography.bodyMedium)

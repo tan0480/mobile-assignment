@@ -1,8 +1,13 @@
 package com.example.gadgetmover.navigation
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -10,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +29,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.gadgetmover.data.AddressRepository
 import com.example.gadgetmover.data.AuthRepository
+import com.example.gadgetmover.data.BiometricPreferences
 import com.example.gadgetmover.data.BrowseHistoryRepository
 import com.example.gadgetmover.data.ChatRepository
 import com.example.gadgetmover.data.NotificationRepository
@@ -37,6 +44,7 @@ import com.example.gadgetmover.model.OtpPurpose
 import com.example.gadgetmover.model.ProductCategory
 import com.example.gadgetmover.model.RentalOrder
 import com.example.gadgetmover.notification.SystemNotifier
+import com.example.gadgetmover.screen.auth.BiometricUnlockScreen
 import com.example.gadgetmover.screen.auth.ForgotPasswordScreen
 import com.example.gadgetmover.screen.auth.IntroScreen
 import com.example.gadgetmover.screen.auth.LoginScreen
@@ -50,12 +58,15 @@ import com.example.gadgetmover.screen.checkout.CheckoutScreen
 import com.example.gadgetmover.screen.explore.ExploreScreen
 import com.example.gadgetmover.screen.home.HomeScreen
 import com.example.gadgetmover.screen.listing.ListingWizardScreen
+import com.example.gadgetmover.screen.listing.WizardUnsavedChanges
 import com.example.gadgetmover.screen.product.BuyConfirmationScreen
 import com.example.gadgetmover.screen.product.ProductDetailScreen
 import com.example.gadgetmover.screen.profile.SellerProfileScreen
+import com.example.gadgetmover.screen.components.CreatePasswordDialog
 import com.example.gadgetmover.screen.components.LocationPickerScreen
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.screen.components.RequestStartupPermissions
+import com.example.gadgetmover.screen.profile.AccountInfoScreen
 import com.example.gadgetmover.screen.profile.AccountSupportAction
 import com.example.gadgetmover.screen.profile.AnalyticsScreen
 import com.example.gadgetmover.screen.profile.BrowseHistoryScreen
@@ -108,6 +119,26 @@ fun GadgetMoverNavGraph() {
     var pendingActivitiesTab by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
+    // The listing wizard (new-listing draft or an in-progress Edit) reports its unsaved-changes
+    // state here (null when there's nothing worth saving) so the bottom nav bar's other four tabs
+    // can be guarded behind a "leave without saving?" prompt instead of silently discarding it —
+    // see `interceptNavigation` below.
+    var currentWizardChanges by remember { mutableStateOf<WizardUnsavedChanges?>(null) }
+    var pendingLeaveNav by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // A Google sign-in account has no Gadget Mover password yet (see User.hasPassword) — Buy,
+    // Rent, and starting a new listing all funnel through this before they're allowed to proceed.
+    var pendingAfterPassword by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var showCreatePasswordDialog by remember { mutableStateOf(false) }
+    fun runOrRequirePassword(action: () -> Unit) {
+        if (AuthRepository.currentUser.value?.hasPassword == false) {
+            pendingAfterPassword = action
+            showCreatePasswordDialog = true
+        } else {
+            action()
+        }
+    }
+
     // Subscribes/unsubscribes to live `notifications` rows for whichever account is currently
     // logged in — restarts on login/logout/account switch, and tears down when logged out.
     val currentUserId = AuthRepository.currentUser.value?.id
@@ -139,11 +170,47 @@ fun GadgetMoverNavGraph() {
         SettingsRepository.refreshFromRemote()
     }
 
+    // Gates the whole app behind a fingerprint check on a cold start that silently restored an
+    // already-signed-in session (see AuthRepository.restoreSession) — only when the seller opted
+    // into "Log in with fingerprint" in Settings. rememberSaveable (not remember) so rotating the
+    // device doesn't re-lock it, but a fresh process does. A LoginScreen submission this same
+    // process marks it unlocked immediately too (see onLoginSuccess below) — the point is to gate
+    // a *silent* restore, not to make someone who just typed their password prove it twice.
+    val isLoggedIn by AuthRepository.isLoggedIn
+    val sessionRestored by AuthRepository.sessionRestored
+    var biometricUnlocked by rememberSaveable { mutableStateOf(false) }
+    if (sessionRestored && isLoggedIn && !biometricUnlocked && BiometricPreferences.isLoginEnabled(context)) {
+        BiometricUnlockScreen(
+            userName = AuthRepository.currentUser.value?.name.orEmpty(),
+            onUnlocked = { biometricUnlocked = true },
+            onLogout = {
+                scope.launch {
+                    AuthRepository.logout()
+                    biometricUnlocked = true
+                    navController.navigate(Screen.Login.route) { popUpTo(0) }
+                }
+            }
+        )
+        return
+    }
+
     Scaffold(
         bottomBar = {
             if (currentRoute in bottomBarRoutes) {
                 val unreadCount = if (AuthRepository.isLoggedIn.value) ChatRepository.totalUnread else 0
-                GadgetMoverBottomBar(navController = navController, unreadCount = unreadCount)
+                GadgetMoverBottomBar(
+                    navController = navController,
+                    unreadCount = unreadCount,
+                    interceptNavigation = { targetMatchRoute, navigate ->
+                        if (currentRoute == Screen.ListingWizard.route && currentWizardChanges != null) {
+                            pendingLeaveNav = navigate
+                        } else if (targetMatchRoute == Screen.ListingWizard.route) {
+                            runOrRequirePassword(navigate)
+                        } else {
+                            navigate()
+                        }
+                    }
+                )
             }
         }
     ) { padding ->
@@ -178,6 +245,7 @@ fun GadgetMoverNavGraph() {
                 LoginScreen(
                     onBackClick = { navController.popBackStack() },
                     onLoginSuccess = {
+                        biometricUnlocked = true
                         navController.navigate(Screen.Home.route) {
                             popUpTo(0)
                         }
@@ -322,7 +390,8 @@ fun GadgetMoverNavGraph() {
                         entry.savedStateHandle.remove<String>("picked_address")
                         entry.savedStateHandle.remove<String>("picked_name")
                         navController.navigate(Screen.LocationPicker.route)
-                    }
+                    },
+                    onUnsavedChangesChanged = { currentWizardChanges = it }
                 )
             }
 
@@ -338,10 +407,10 @@ fun GadgetMoverNavGraph() {
                         product = product,
                         onBackClick = { navController.popBackStack() },
                         onBuyNowClick = {
-                            navController.navigate(Screen.Checkout.createRoute(it.id, ListingType.BUY.name))
+                            runOrRequirePassword { navController.navigate(Screen.Checkout.createRoute(it.id, ListingType.BUY.name)) }
                         },
                         onRentClick = {
-                            navController.navigate(Screen.Checkout.createRoute(it.id, ListingType.RENT.name))
+                            runOrRequirePassword { navController.navigate(Screen.Checkout.createRoute(it.id, ListingType.RENT.name)) }
                         },
                         onMessageSellerClick = {
                             scope.launch {
@@ -481,7 +550,7 @@ fun GadgetMoverNavGraph() {
                             navController.navigate(Screen.ProductDetail.createRoute(productId))
                         },
                         onNegotiatedCheckout = { productId, type, price ->
-                            navController.navigate(Screen.Checkout.createRoute(productId, type.name, price))
+                            runOrRequirePassword { navController.navigate(Screen.Checkout.createRoute(productId, type.name, price)) }
                         }
                     )
                 }
@@ -508,7 +577,7 @@ fun GadgetMoverNavGraph() {
                                 pendingActivitiesTab = 3
                                 navController.navigate(Screen.MyActivities.route)
                             }
-                            ProfileQuickAction.WALLET -> navController.navigate(Screen.Wallet.route)
+                            ProfileQuickAction.WALLET -> runOrRequirePassword { navController.navigate(Screen.Wallet.route) }
                             ProfileQuickAction.SAVED_ITEMS -> navController.navigate(Screen.SavedItems.route)
                             ProfileQuickAction.REVIEWS -> navController.navigate(Screen.Reviews.route)
                             ProfileQuickAction.ANALYTICS -> navController.navigate(Screen.Analytics.route)
@@ -519,7 +588,7 @@ fun GadgetMoverNavGraph() {
                     },
                     onAccountSupportClick = { action ->
                         when (action) {
-                            AccountSupportAction.PAYMENT_METHODS -> navController.navigate(Screen.PaymentMethods.route)
+                            AccountSupportAction.PAYMENT_METHODS -> runOrRequirePassword { navController.navigate(Screen.PaymentMethods.route) }
                             AccountSupportAction.SHIPPING_ADDRESS -> navController.navigate(Screen.ShippingAddress.route)
                         }
                     },
@@ -735,12 +804,62 @@ fun GadgetMoverNavGraph() {
             }
 
             composable(Screen.Settings.route) {
-                SettingsScreen(onBackClick = { navController.popBackStack() })
+                SettingsScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onAccountInfoClick = { navController.navigate(Screen.AccountInfo.route) },
+                    onRequirePassword = ::runOrRequirePassword
+                )
+            }
+
+            composable(Screen.AccountInfo.route) {
+                AccountInfoScreen(onBackClick = { navController.popBackStack() })
             }
 
             composable(Screen.HelpCentre.route) {
                 HelpCentreScreen(onBackClick = { navController.popBackStack() })
             }
         }
+    }
+
+    pendingLeaveNav?.let { navigate ->
+        AlertDialog(
+            onDismissRequest = { pendingLeaveNav = null },
+            title = { Text("Leave without saving?") },
+            text = { Text("You have unsaved changes. You can save them first, or leave without saving.") },
+            confirmButton = {
+                Button(onClick = {
+                    pendingLeaveNav = null
+                    navigate()
+                }) {
+                    Text("Leave")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        val changes = currentWizardChanges
+                        pendingLeaveNav = null
+                        if (changes != null) changes.onSaveAndLeave { navigate() } else navigate()
+                    }) {
+                        Text("Save")
+                    }
+                    TextButton(onClick = { pendingLeaveNav = null }) { Text("Cancel") }
+                }
+            }
+        )
+    }
+
+    if (showCreatePasswordDialog) {
+        CreatePasswordDialog(
+            onDismiss = {
+                showCreatePasswordDialog = false
+                pendingAfterPassword = null
+            },
+            onCreated = {
+                showCreatePasswordDialog = false
+                pendingAfterPassword?.invoke()
+                pendingAfterPassword = null
+            }
+        )
     }
 }

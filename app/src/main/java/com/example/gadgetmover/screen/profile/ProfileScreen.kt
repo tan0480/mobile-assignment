@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -93,6 +94,7 @@ fun ProfileScreen(
     val isLoggedIn by AuthRepository.isLoggedIn
     val user = AuthRepository.currentUser.value
     var showLoginDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
 
     fun requireLogin(action: () -> Unit) {
         if (isLoggedIn) action() else showLoginDialog = true
@@ -162,7 +164,7 @@ fun ProfileScreen(
                             tint = MaterialTheme.colorScheme.error,
                             title = "Log out",
                             subtitle = "Sign out of your account",
-                            onClick = onLogoutClick,
+                            onClick = { showLogoutDialog = true },
                             showDivider = false
                         )
                     }
@@ -174,6 +176,28 @@ fun ProfileScreen(
 
     if (showLoginDialog) {
         LoginRequiredDialog(onDismiss = { showLoginDialog = false }, onLoginClick = onLoginClick)
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Log out?") },
+            text = { Text("You'll need to log back in to buy, sell, or message on Gadget Mover.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogoutClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Log Out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

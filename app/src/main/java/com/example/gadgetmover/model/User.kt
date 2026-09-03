@@ -17,5 +17,7 @@ data class User(
     val joinedDate: String,
     val isVerified: Boolean = false,
     val walletBalance: Double = 0.0,
-    val password: String = ""
+    val password: String = "",
+    /** False for an account that signed up via Google and has never set a Gadget Mover password — gates Buy/Rent/List an item behind creating one first, since those flows assume a real password exists. */
+    val hasPassword: Boolean = true
 )

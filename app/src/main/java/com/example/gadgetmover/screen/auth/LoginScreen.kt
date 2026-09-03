@@ -20,9 +20,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -44,8 +46,12 @@ import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.OrderRepository
 import com.example.gadgetmover.data.WalletRepository
+import com.example.gadgetmover.data.supabase
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.util.isValidEmail
+import io.github.jan.supabase.compose.auth.composable.NativeSignInResult
+import io.github.jan.supabase.compose.auth.composable.rememberSignInWithGoogle
+import io.github.jan.supabase.compose.auth.composeAuth
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,7 +67,42 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
+    var isGoogleSigningIn by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    fun finishLogin() {
+        scope.launch {
+            OrderRepository.refreshFromRemote()
+            WalletRepository.refreshFromRemote()
+            onLoginSuccess()
+        }
+    }
+
+    val googleSignIn = supabase.composeAuth.rememberSignInWithGoogle(
+        onResult = { result ->
+            when (result) {
+                is NativeSignInResult.Success -> {
+                    scope.launch {
+                        isGoogleSigningIn = false
+                        if (AuthRepository.completeGoogleSignIn()) {
+                            finishLogin()
+                        } else {
+                            errorMessage = "Couldn't finish signing in. Please try again."
+                        }
+                    }
+                }
+                is NativeSignInResult.ClosedByUser -> isGoogleSigningIn = false
+                is NativeSignInResult.NetworkError -> {
+                    isGoogleSigningIn = false
+                    errorMessage = "Network error — please try again."
+                }
+                is NativeSignInResult.Error -> {
+                    isGoogleSigningIn = false
+                    errorMessage = result.message
+                }
+            }
+        }
+    )
 
     Scaffold(
         topBar = {
@@ -148,13 +189,9 @@ fun LoginScreen(
                             isSubmitting = true
                             scope.launch {
                                 val success = AuthRepository.login(email, password)
-                                if (success) {
-                                    OrderRepository.refreshFromRemote()
-                                    WalletRepository.refreshFromRemote()
-                                }
                                 isSubmitting = false
                                 if (success) {
-                                    onLoginSuccess()
+                                    finishLogin()
                                 } else {
                                     errorMessage = "Incorrect email or password."
                                 }
@@ -175,6 +212,39 @@ fun LoginScreen(
                     Text("Log In", style = MaterialTheme.typography.titleMedium)
                 }
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
+                Text(
+                    "OR",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+
+            OutlinedButton(
+                onClick = {
+                    errorMessage = null
+                    isGoogleSigningIn = true
+                    googleSignIn.startFlow()
+                },
+                enabled = !isGoogleSigningIn && !isSubmitting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                if (isGoogleSigningIn) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                } else {
+                    Text("Continue with Google", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),

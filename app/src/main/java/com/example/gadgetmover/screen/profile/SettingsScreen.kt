@@ -1,5 +1,6 @@
 package com.example.gadgetmover.screen.profile
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -20,19 +22,30 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
+import com.example.gadgetmover.data.BiometricPreferences
 import com.example.gadgetmover.data.SettingsRepository
 import com.example.gadgetmover.data.ThemePreferences
+import com.example.gadgetmover.util.BiometricAuthResult
+import com.example.gadgetmover.util.BiometricAvailability
+import com.example.gadgetmover.util.authenticateWithBiometrics
+import com.example.gadgetmover.util.biometricAvailability
 import kotlinx.coroutines.launch
 
 private enum class ThemeOption(val label: String, val forcedValue: Boolean?) {
@@ -43,11 +56,47 @@ private enum class ThemeOption(val label: String, val forcedValue: Boolean?) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBackClick: () -> Unit) {
+fun SettingsScreen(
+    onBackClick: () -> Unit,
+    onAccountInfoClick: () -> Unit,
+    /** Gates an action behind creating a password first (see NavGraph's runOrRequirePassword) — a
+     * Google sign-in account with no password yet can't meaningfully enable a fingerprint fallback
+     * for it. Defaults to running the action straight away for callers that don't need the gate. */
+    onRequirePassword: (() -> Unit) -> Unit = { it() }
+) {
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    var biometricLoginEnabled by remember { mutableStateOf(BiometricPreferences.isLoginEnabled(context)) }
+    var biometricPaymentsEnabled by remember { mutableStateOf(BiometricPreferences.isPaymentsEnabled(context)) }
+
+    // Turning a biometric toggle on requires a live successful check first — never flips the
+    // preference on trust alone, since that would silently "enable" a gate that then can't
+    // actually challenge anyone (no hardware, or no fingerprint enrolled on this device).
+    fun requestEnableBiometric(onEnabled: () -> Unit) {
+        if (activity == null) return
+        when (biometricAvailability(activity)) {
+            BiometricAvailability.AVAILABLE -> scope.launch {
+                val result = authenticateWithBiometrics(activity, "Confirm to enable")
+                if (result is BiometricAuthResult.Success) {
+                    onEnabled()
+                } else if (result is BiometricAuthResult.Failed) {
+                    snackbarHostState.showSnackbar(result.message)
+                }
+            }
+            BiometricAvailability.NOT_ENROLLED -> scope.launch {
+                snackbarHostState.showSnackbar("Set up a fingerprint in your device settings first")
+            }
+            else -> scope.launch {
+                snackbarHostState.showSnackbar("This device doesn't support fingerprint unlock")
+            }
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
@@ -61,6 +110,15 @@ fun SettingsScreen(onBackClick: () -> Unit) {
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             Spacer(modifier = Modifier.height(8.dp))
+            Text("Account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsNavigationRow(
+                title = "Account Information",
+                subtitle = "Name, username, phone, and password",
+                onClick = onAccountInfoClick
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
             Text("Notifications", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -106,6 +164,42 @@ fun SettingsScreen(onBackClick: () -> Unit) {
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Security", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SettingsToggleRow(
+                title = "Log in with fingerprint",
+                subtitle = "Confirm it's you with a fingerprint check on app start",
+                checked = biometricLoginEnabled,
+                onCheckedChange = { enable ->
+                    if (enable) {
+                        onRequirePassword {
+                            requestEnableBiometric { biometricLoginEnabled = true; BiometricPreferences.setLoginEnabled(context, true) }
+                        }
+                    } else {
+                        biometricLoginEnabled = false
+                        BiometricPreferences.setLoginEnabled(context, false)
+                    }
+                }
+            )
+            HorizontalDivider()
+            SettingsToggleRow(
+                title = "Fingerprint for payments",
+                subtitle = "Confirm wallet payments and withdrawals with a fingerprint instead of your password",
+                checked = biometricPaymentsEnabled,
+                onCheckedChange = { enable ->
+                    if (enable) {
+                        onRequirePassword {
+                            requestEnableBiometric { biometricPaymentsEnabled = true; BiometricPreferences.setPaymentsEnabled(context, true) }
+                        }
+                    } else {
+                        biometricPaymentsEnabled = false
+                        BiometricPreferences.setPaymentsEnabled(context, false)
+                    }
+                }
+            )
         }
     }
 }
@@ -122,5 +216,23 @@ private fun SettingsToggleRow(title: String, subtitle: String, checked: Boolean,
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SettingsNavigationRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

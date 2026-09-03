@@ -47,7 +47,12 @@ val bottomNavItems = listOf(
 )
 
 @Composable
-fun GadgetMoverBottomBar(navController: NavHostController, unreadCount: Int) {
+fun GadgetMoverBottomBar(
+    navController: NavHostController,
+    unreadCount: Int,
+    /** Called instead of navigating directly — lets the caller guard the switch (e.g. the listing wizard has unsaved changes, or the target tab itself requires a check like "Sell" needing a password) behind a confirmation before running [navigate]. [targetMatchRoute] is the tapped tab's [BottomNavItem.matchRoute]. Most callers should just invoke `navigate` immediately. */
+    interceptNavigation: (targetMatchRoute: String, navigate: () -> Unit) -> Unit = { _, navigate -> navigate() }
+) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
@@ -58,15 +63,17 @@ fun GadgetMoverBottomBar(navController: NavHostController, unreadCount: Int) {
                 selected = selected,
                 onClick = {
                     if (!selected) {
-                        navController.navigate(item.route) {
-                            // popUpTo(Screen.Home.route) + restoreState reproducibly fails
-                            // to navigate when the tapped tab IS Home itself (the pop target
-                            // and the nav target being the same route breaks restoration, so
-                            // tapping Home from e.g. a category-filtered Explore screen was a
-                            // no-op). None of these screens rely on saved scroll/filter state
-                            // surviving a tab switch anyway, so just clear the back stack.
-                            popUpTo(0)
-                            launchSingleTop = true
+                        interceptNavigation(item.matchRoute) {
+                            navController.navigate(item.route) {
+                                // popUpTo(Screen.Home.route) + restoreState reproducibly fails
+                                // to navigate when the tapped tab IS Home itself (the pop target
+                                // and the nav target being the same route breaks restoration, so
+                                // tapping Home from e.g. a category-filtered Explore screen was a
+                                // no-op). None of these screens rely on saved scroll/filter state
+                                // surviving a tab switch anyway, so just clear the back stack.
+                                popUpTo(0)
+                                launchSingleTop = true
+                            }
                         }
                     }
                 },
