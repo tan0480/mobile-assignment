@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.parcelize")
 }
 
 val localProperties = Properties().apply {
@@ -49,10 +50,6 @@ android {
         // com.google.android.geo.API_KEY meta-data) rather than BuildConfig, since the SDK's native
         // (non-Kotlin) init code reads it straight out of the manifest.
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
-        // The Places SDK, unlike Maps, is initialized explicitly from Kotlin code
-        // (Places.initializeWithNewPlacesApiEnabled) rather than read from the manifest, so it
-        // also needs the same key exposed as a BuildConfig field.
-        buildConfigField("String", "MAPS_API_KEY", "\"${localProperties.getProperty("MAPS_API_KEY", "")}\"")
     }
 
     buildTypes {
@@ -129,15 +126,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:20.0.0")
     implementation("com.google.maps.android:maps-compose:6.6.0")
     implementation("com.google.android.gms:play-services-location:21.4.0")
-
-    // Places SDK for Android — named-place search in the location picker (spec: "search like
-    // Carousell"), separate from the Maps SDK above and billed separately past its free tier.
-    // Uses the same MAPS_API_KEY (Places API (New) enabled on the same Google Cloud project).
-    // Version pinned to the current stable release on Google's Maven (not Maven Central).
-    implementation("com.google.android.libraries.places:places:5.3.0")
-    // Task<T>.await() for the Places SDK's Task-based callbacks — pinned to match the
-    // kotlinx-coroutines-android version already declared above.
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
