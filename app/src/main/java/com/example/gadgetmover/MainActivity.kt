@@ -8,6 +8,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.example.gadgetmover.data.ProductCache
+import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.data.SettingsRepository
 import com.example.gadgetmover.data.ThemePreferences
 import com.example.gadgetmover.navigation.GadgetMoverNavGraph
@@ -18,6 +20,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         SettingsRepository.forceDarkMode.value = ThemePreferences.load(this)
+        ProductRepository.loadCache(ProductCache.load(this))
         setContent {
             val forcedDark = SettingsRepository.forceDarkMode.value
             GadgetMoverTheme(darkTheme = forcedDark ?: isSystemInDarkTheme()) {

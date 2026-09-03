@@ -56,7 +56,6 @@ sealed class Screen(val route: String) {
     }
     object SavedItems : Screen("saved_items")
 
-    object EditProfile : Screen("edit_profile")
     object PaymentMethods : Screen("payment_methods")
     object ShippingAddress : Screen("shipping_address")
     /** Same address book as [ShippingAddress], but for picking one address for the checkout in progress rather than managing the book — tapping a row selects it and returns to Checkout instead of just toggling its default flag. */
@@ -65,7 +64,6 @@ sealed class Screen(val route: String) {
         fun createRoute(addressId: String) = "edit_address/$addressId"
         const val NEW_ADDRESS_ID = "new"
     }
-    object PrivacySecurity : Screen("privacy_security")
     object MyListings : Screen("my_listings")
     object Wallet : Screen("wallet")
     object WalletAddFundsAmount : Screen("wallet_add_funds_amount")

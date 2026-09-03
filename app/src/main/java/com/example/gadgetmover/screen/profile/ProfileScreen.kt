@@ -33,9 +33,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.ManageAccounts
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -82,12 +79,11 @@ enum class ProfileQuickAction {
 }
 
 enum class AccountSupportAction {
-    ACCOUNT_SETTINGS, PAYMENT_METHODS, SHIPPING_ADDRESS, PRIVACY_SECURITY
+    PAYMENT_METHODS, SHIPPING_ADDRESS
 }
 
 @Composable
 fun ProfileScreen(
-    onNotificationsClick: () -> Unit,
     onQuickActionClick: (ProfileQuickAction) -> Unit,
     onAccountSupportClick: (AccountSupportAction) -> Unit,
     onLogoutClick: () -> Unit,
@@ -132,13 +128,6 @@ fun ProfileScreen(
             Card(shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(4.dp)) {
                 Column {
                     AccountSupportRow(
-                        icon = Icons.Filled.ManageAccounts, // TODO: swap with custom ImageVector
-                        tint = MaterialTheme.colorScheme.primary,
-                        title = "Account settings",
-                        subtitle = "Profile, identity & preferences",
-                        onClick = { requireLogin { onAccountSupportClick(AccountSupportAction.ACCOUNT_SETTINGS) } }
-                    )
-                    AccountSupportRow(
                         icon = Icons.Filled.CreditCard, // TODO: swap with custom ImageVector
                         tint = MaterialTheme.colorScheme.primary,
                         title = "Payment methods",
@@ -151,20 +140,6 @@ fun ProfileScreen(
                         title = "Shipping address",
                         subtitle = "Manage pickup addresses",
                         onClick = { requireLogin { onAccountSupportClick(AccountSupportAction.SHIPPING_ADDRESS) } }
-                    )
-                    AccountSupportRow(
-                        icon = Icons.Filled.Security, // TODO: swap with custom ImageVector
-                        tint = BrandBlueDark,
-                        title = "Privacy & security",
-                        subtitle = "Password and login",
-                        onClick = { requireLogin { onAccountSupportClick(AccountSupportAction.PRIVACY_SECURITY) } }
-                    )
-                    AccountSupportRow(
-                        icon = Icons.Filled.Notifications, // TODO: swap with custom ImageVector
-                        tint = MaterialTheme.colorScheme.primary,
-                        title = "Notifications",
-                        subtitle = "Manage alerts and updates",
-                        onClick = { requireLogin(onNotificationsClick) }
                     )
                     AccountSupportRow(
                         icon = Icons.Filled.Analytics, // TODO: swap with custom ImageVector
@@ -399,7 +374,7 @@ private fun MarketplaceGrid(onQuickActionClick: (ProfileQuickAction) -> Unit) {
     val items = listOf(
         MarketplaceItem(ProfileQuickAction.MY_LISTINGS, Icons.Filled.Add, Color(0xFF7C3AED), "My listings", "$myListingsCount active"),
         MarketplaceItem(ProfileQuickAction.PURCHASES, Icons.Filled.ShoppingBag, BrandOrange, "Purchases", "$purchasesCount items"),
-        MarketplaceItem(ProfileQuickAction.SALES, Icons.Filled.ShoppingCart, Color(0xFF334155), "Sales", "$salesCount items"),
+        MarketplaceItem(ProfileQuickAction.SALES, Icons.Filled.ShoppingCart, Color(0xFF0D9488), "Sales", "$salesCount items"),
         MarketplaceItem(ProfileQuickAction.RENTALS, Icons.Filled.DateRange, Color(0xFF2563EB), "Rentals", "$activeRentalsCount active"),
         MarketplaceItem(ProfileQuickAction.LEASES, Icons.Filled.Description, BrandOrange, "Leases", "$pendingLeasesCount pending"),
         MarketplaceItem(ProfileQuickAction.WALLET, Icons.Filled.Wallet, Color(0xFF16A34A), "Wallet", formatMoney(walletBalance)),

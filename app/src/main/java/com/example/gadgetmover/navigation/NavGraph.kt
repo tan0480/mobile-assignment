@@ -1,5 +1,6 @@
 package com.example.gadgetmover.navigation
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import com.example.gadgetmover.data.ChatRepository
 import com.example.gadgetmover.data.NotificationRepository
 import com.example.gadgetmover.data.OnboardingPreferences
 import com.example.gadgetmover.data.OrderRepository
+import com.example.gadgetmover.data.ProductCache
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.data.SettingsRepository
 import com.example.gadgetmover.data.WalletRepository
@@ -58,14 +60,12 @@ import com.example.gadgetmover.screen.profile.AccountSupportAction
 import com.example.gadgetmover.screen.profile.AnalyticsScreen
 import com.example.gadgetmover.screen.profile.BrowseHistoryScreen
 import com.example.gadgetmover.screen.profile.EditAddressScreen
-import com.example.gadgetmover.screen.profile.EditProfileScreen
 import com.example.gadgetmover.screen.profile.HelpCentreScreen
 import com.example.gadgetmover.screen.profile.MyActivitiesScreen
 import com.example.gadgetmover.screen.profile.OrderDetailScreen
 import com.example.gadgetmover.screen.profile.ReturnRequestScreen
 import com.example.gadgetmover.screen.profile.MyListingsScreen
 import com.example.gadgetmover.screen.profile.PaymentMethodsScreen
-import com.example.gadgetmover.screen.profile.PrivacySecurityScreen
 import com.example.gadgetmover.screen.profile.ProfileQuickAction
 import com.example.gadgetmover.screen.profile.ProfileScreen
 import com.example.gadgetmover.screen.profile.ReviewsScreen
@@ -125,6 +125,10 @@ fun GadgetMoverNavGraph() {
     LaunchedEffect(Unit) {
         AuthRepository.restoreSession()
         ProductRepository.refreshFromRemote()
+        // Updates the on-disk cache MainActivity seeds Home from on the next cold start — kept
+        // in step with whatever refreshFromRemote() just pulled, so the cache is never more than
+        // one session stale.
+        ProductCache.save(appContext, ProductRepository.products)
         ProductRepository.refreshSavedIds()
         OrderRepository.refreshFromRemote()
         WalletRepository.refreshFromRemote()
@@ -146,7 +150,15 @@ fun GadgetMoverNavGraph() {
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(padding)
+            // .padding(padding) alone physically pushes every screen below the status bar, which
+            // is all Home/Explore/etc. need since they have no top bar of their own. But screens
+            // that DO have their own inner Scaffold+TopAppBar (ChatDetailScreen, ProductDetail,
+            // ...) read WindowInsets.statusBars directly to size that bar, and padding() doesn't
+            // tell the WindowInsets system that inset was already consumed here — so those screens
+            // reserved the status bar height a second time on top of this padding, doubling the
+            // gap above their top bar. consumeWindowInsets marks it consumed for descendants
+            // without touching the physical .padding() that the top-bar-less screens still need.
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding)
         ) {
             composable(Screen.Intro.route) {
                 IntroScreen(
@@ -477,7 +489,6 @@ fun GadgetMoverNavGraph() {
 
             composable(Screen.Profile.route) {
                 ProfileScreen(
-                    onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
                     onQuickActionClick = { action ->
                         when (action) {
                             ProfileQuickAction.MY_LISTINGS -> navController.navigate(Screen.MyListings.route)
@@ -508,10 +519,8 @@ fun GadgetMoverNavGraph() {
                     },
                     onAccountSupportClick = { action ->
                         when (action) {
-                            AccountSupportAction.ACCOUNT_SETTINGS -> navController.navigate(Screen.EditProfile.route)
                             AccountSupportAction.PAYMENT_METHODS -> navController.navigate(Screen.PaymentMethods.route)
                             AccountSupportAction.SHIPPING_ADDRESS -> navController.navigate(Screen.ShippingAddress.route)
-                            AccountSupportAction.PRIVACY_SECURITY -> navController.navigate(Screen.PrivacySecurity.route)
                         }
                     },
                     onLogoutClick = {
@@ -579,10 +588,6 @@ fun GadgetMoverNavGraph() {
                 )
             }
 
-            composable(Screen.EditProfile.route) {
-                EditProfileScreen(onBackClick = { navController.popBackStack() })
-            }
-
             composable(Screen.PaymentMethods.route) {
                 PaymentMethodsScreen(onBackClick = { navController.popBackStack() })
             }
@@ -644,10 +649,6 @@ fun GadgetMoverNavGraph() {
                         navController.popBackStack()
                     }
                 )
-            }
-
-            composable(Screen.PrivacySecurity.route) {
-                PrivacySecurityScreen(onBackClick = { navController.popBackStack() })
             }
 
             composable(Screen.MyListings.route) {

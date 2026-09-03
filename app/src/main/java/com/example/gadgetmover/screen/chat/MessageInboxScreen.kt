@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -68,6 +69,7 @@ fun MessageInboxScreen(
     onLoginClick: () -> Unit
 ) {
     val isLoggedIn by AuthRepository.isLoggedIn
+    val sessionRestored by AuthRepository.sessionRestored
     var query by remember { mutableStateOf("") }
     var isRefreshing by remember { mutableStateOf(false) }
     var threadPendingDelete by remember { mutableStateOf<ChatThread?>(null) }
@@ -101,6 +103,16 @@ fun MessageInboxScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         MessagesTopBar()
+
+        if (!sessionRestored) {
+            // Still checking for a persisted session — showing nothing here rather than the
+            // "log in" state below, which would otherwise flash for an already-logged-in user
+            // for the brief moment before AuthRepository.restoreSession() resolves.
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return
+        }
 
         if (!isLoggedIn) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

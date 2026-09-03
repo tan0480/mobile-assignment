@@ -28,11 +28,12 @@ import coil3.compose.AsyncImage
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.util.formatMoney
+import com.example.gadgetmover.util.sanitizeMoneyInput
 
 /**
- * Shown after picking a product for the "Special Price" attachment — enters a discounted sale
- * price and/or a discounted daily rental rate, depending on what [product] is listed for. Confirm
- * enables once at least one entered price is valid (greater than 0 and below the original price).
+ * Shown after picking a product for the "Special Price" attachment — enters a sale price and/or
+ * a daily rental rate, depending on what [product] is listed for. Confirm enables once at least
+ * one entered price is a valid positive amount; it isn't required to be below the original price.
  */
 @Composable
 fun OfferPriceDialog(
@@ -51,8 +52,8 @@ fun OfferPriceDialog(
 
     val saleValue = saleText.toDoubleOrNull()
     val rentalValue = rentalText.toDoubleOrNull()
-    val saleValid = saleText.isBlank() || (saleValue != null && saleValue > 0.0 && saleValue < originalSale)
-    val rentalValid = rentalText.isBlank() || (rentalValue != null && rentalValue > 0.0 && rentalValue < originalRental)
+    val saleValid = saleText.isBlank() || (saleValue != null && saleValue > 0.0)
+    val rentalValid = rentalText.isBlank() || (rentalValue != null && rentalValue > 0.0)
     val hasAtLeastOne = (saleText.isNotBlank() && saleValid) || (rentalText.isNotBlank() && rentalValid)
     val canConfirm = saleValid && rentalValid && hasAtLeastOne
 
@@ -81,11 +82,11 @@ fun OfferPriceDialog(
                     )
                     OutlinedTextField(
                         value = saleText,
-                        onValueChange = { saleText = it },
-                        label = { Text("Discounted sale price") },
+                        onValueChange = { saleText = sanitizeMoneyInput(it) },
+                        label = { Text("Special sale price") },
                         isError = saleText.isNotBlank() && !saleValid,
                         supportingText = if (saleText.isNotBlank() && !saleValid) {
-                            { Text("Enter an amount below ${formatMoney(originalSale)}") }
+                            { Text("Enter a valid amount") }
                         } else null,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -101,11 +102,11 @@ fun OfferPriceDialog(
                     )
                     OutlinedTextField(
                         value = rentalText,
-                        onValueChange = { rentalText = it },
-                        label = { Text("Discounted rate / day") },
+                        onValueChange = { rentalText = sanitizeMoneyInput(it) },
+                        label = { Text("Special rate / day") },
                         isError = rentalText.isNotBlank() && !rentalValid,
                         supportingText = if (rentalText.isNotBlank() && !rentalValid) {
-                            { Text("Enter an amount below ${formatMoney(originalRental)}/day") }
+                            { Text("Enter a valid amount") }
                         } else null,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
