@@ -41,7 +41,7 @@ object AudioSpeakerFilterSchema {
         options = options(
             "Bookshelf Speakers", "Monitor Speakers", "Floorstanding / Tower Speakers", "Soundbar",
             "Portable Bluetooth Speaker", "Outdoor Speaker", "In-Wall / Ceiling Speaker",
-            "Smart Speaker (Voice Assistant)", "Other"
+            "Smart Speaker (Voice Assistant)", "PA Speaker", "Other"
         )
     )
 
@@ -113,7 +113,7 @@ object AudioSpeakerFilterSchema {
         key = "tweeter_material",
         label = "Tweeter Material",
         type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("Silk / Soft Dome", "Aluminum", "Titanium", "Beryllium", "Diamond", "Ceramic", "Other"),
+        options = options("Silk", "Polymer", "Aluminum", "Titanium", "Beryllium", "Diamond", "Ceramic", "Other"),
         visibleWhen = tweeterDependency
     )
 

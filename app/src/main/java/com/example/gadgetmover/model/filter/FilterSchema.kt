@@ -238,7 +238,7 @@ object CommonFilterFields {
 /** Looks up the advanced filter schema for a given category. Categories with no entry yet fall back to `null` — the caller should hide the advanced-filters section rather than crash. */
 object CategoryFilterRegistry {
     private val schemas: Map<ProductCategory, CategoryFilterSchema> = mapOf(
-        ProductCategory.MECHANICAL_KEYBOARD to KeyboardFilterSchema.schema,
+        ProductCategory.KEYBOARD to KeyboardFilterSchema.schema,
         ProductCategory.MOUSE to MiceFilterSchema.schema,
         ProductCategory.HEADPHONE to HeadphoneFilterSchema.schema,
         ProductCategory.WIRED_EARPHONE to WiredEarphoneFilterSchema.schema,
