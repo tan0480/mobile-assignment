@@ -2,6 +2,8 @@ package com.example.gadgetmover.screen.listing
 
 import android.content.ContentResolver
 import android.net.Uri
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -32,6 +35,8 @@ import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -55,13 +60,17 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -70,6 +79,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,7 +98,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.AddressRepository
+import com.example.gadgetmover.data.ListingDraftRepository
 import com.example.gadgetmover.data.ProductRepository
+import com.example.gadgetmover.data.SavedListingDraft
 import com.example.gadgetmover.model.Condition
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
@@ -104,9 +121,21 @@ import com.example.gadgetmover.util.sanitizeMoneyInput
 import com.example.gadgetmover.util.validateListingNumbers
 
 import com.example.gadgetmover.ui.theme.BrandOrange
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
-private data class ListingDraft(
+/** Lets [ListingDraft.imageUris] — local content-picker URIs, needed only for the save-as-draft JSON — round-trip through kotlinx.serialization as plain strings. */
+private object UriSerializer : KSerializer<Uri> {
+    override val descriptor = PrimitiveSerialDescriptor("Uri", PrimitiveKind.STRING)
+    override fun serialize(encoder: Encoder, value: Uri) = encoder.encodeString(value.toString())
+    override fun deserialize(decoder: Decoder): Uri = Uri.parse(decoder.decodeString())
+}
+
+/** Not `private` — [com.example.gadgetmover.data.ListingDraftRepository] persists this directly as the body of a saved draft. */
+@Serializable
+internal data class ListingDraft(
     val listingType: ListingType = ListingType.BUY,
     val category: ProductCategory? = null,
     val title: String = "",
@@ -119,7 +148,7 @@ private data class ListingDraft(
     val deposit: String = "",
     val hasWarranty: Boolean = false,
     val warrantyDetails: String = "",
-    val imageUris: List<Uri> = emptyList(),
+    val imageUris: List<@Serializable(with = UriSerializer::class) Uri> = emptyList(),
     /** Already-uploaded photo URLs kept from the listing being edited — distinct from [imageUris], which are newly-picked local photos still awaiting upload. Empty when creating a brand-new listing. */
     val existingImageUrls: List<String> = emptyList(),
     val fulfillmentMethods: Set<FulfillmentMethod> = emptySet(),
@@ -137,15 +166,23 @@ private data class ListingDraft(
      * loses a previously-set return address just because [returnAddressId] failed to re-resolve.
      */
     val returnAddressSnapshot: ReturnAddressSnapshot? = null
-)
+) {
+    /** Whether this draft is worth prompting to save / showing in the draft picker — an empty step-0 draft is not. */
+    fun isWorthSaving(): Boolean = title.isNotBlank() || category != null || imageUris.isNotEmpty() || existingImageUrls.isNotEmpty() || price.isNotBlank() || rentalRate.isNotBlank()
+}
 
-private data class ReturnAddressSnapshot(val receiverName: String, val phoneNumber: String, val fullAddress: String)
+@Serializable
+internal data class ReturnAddressSnapshot(val receiverName: String, val phoneNumber: String, val fullAddress: String)
 
 private data class ListingWizardUiState(
     val step: Int = 0,
     val draft: ListingDraft = ListingDraft(),
     val isPublishing: Boolean = false,
-    val pendingMeetupPick: PickedLocation? = null
+    val pendingMeetupPick: PickedLocation? = null,
+    /** Identifies this in-progress draft in [ListingDraftRepository] — stable for the life of this ViewModel so repeated saves (explicit or autosave) overwrite the same entry instead of piling up duplicates. */
+    val draftId: String = UUID.randomUUID().toString(),
+    /** The [draft] content as of the last successful save (explicit, autosave, or "Save Draft" from the leave prompt) — null means never saved. As long as [draft] still equals this, there's nothing new to lose, so the bottom-nav "leave without saving?" prompt stays quiet. */
+    val lastSavedDraft: ListingDraft? = null
 )
 
 /** Seeds a draft from an existing listing so the Edit flow reuses every step's UI as-is — 1:1 field mapping, numeric fields become their text-input string form. */
@@ -206,6 +243,16 @@ private class ListingWizardViewModel(private val existingProduct: Product?) : Vi
         _uiState.update { it.copy(draft = draft) }
     }
 
+    /** Resumes a previously saved draft picked from the draft picker — replaces the in-progress draft and jumps back to whichever step it was saved at. */
+    fun loadFromSavedDraft(saved: SavedListingDraft) {
+        _uiState.update { it.copy(draft = saved.draft, draftId = saved.id, step = saved.step, lastSavedDraft = saved.draft) }
+    }
+
+    /** Records that [draft] was just persisted to [ListingDraftRepository] — see [ListingWizardUiState.lastSavedDraft]. */
+    fun markDraftSaved(draft: ListingDraft) {
+        _uiState.update { it.copy(lastSavedDraft = draft) }
+    }
+
     fun setPendingMeetupPick(pick: PickedLocation?) {
         _uiState.update { it.copy(pendingMeetupPick = pick) }
     }
@@ -250,15 +297,26 @@ private val stepSubtitles = listOf(
     "You can adjust this anytime after publishing."
 )
 
+/**
+ * Reported by [ListingWizardScreen] whenever there's something on screen worth not losing — a
+ * non-empty new-listing draft, or an edit that differs from the published listing. [onSaveAndLeave]
+ * performs whichever save is appropriate (an instant local draft write, or the same async publish
+ * behind the "Save Changes" button) and calls its `onSaved` callback once it's safe to navigate
+ * away — draft saves call it immediately, an edit's publish call only on success.
+ */
+internal class WizardUnsavedChanges(val onSaveAndLeave: (onSaved: () -> Unit) -> Unit)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ListingWizardScreen(
+internal fun ListingWizardScreen(
     existingProduct: Product?,
     onBackClick: () -> Unit,
     onPublished: () -> Unit,
     onLoginClick: () -> Unit,
     pickedMeetupLocation: PickedLocation?,
-    onPickMeetupLocation: () -> Unit
+    onPickMeetupLocation: () -> Unit,
+    /** Reports unsaved-changes state (null once there's nothing worth saving, e.g. while the draft picker is showing) — lets the caller guard the bottom nav bar's other tabs behind a "leave without saving?" prompt instead of silently discarding them. Covers both the new-listing draft flow and the Edit flow — see [WizardUnsavedChanges]. */
+    onUnsavedChangesChanged: (WizardUnsavedChanges?) -> Unit = {}
 ) {
     val screenTitle = if (existingProduct != null) "Edit Listing" else "List an item"
     val isLoggedIn by AuthRepository.isLoggedIn
@@ -331,13 +389,133 @@ fun ListingWizardScreen(
     val pendingMeetupPick = uiState.pendingMeetupPick
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val contentResolver = LocalContext.current.contentResolver
+    val context = LocalContext.current
+    val contentResolver = context.contentResolver
+    // The Edit flow's baseline for detecting unsaved changes — what the wizard was seeded with,
+    // before any edits. Only ever read for that comparison, never re-seeded into the draft itself.
+    val originalEditDraft = remember(existingProduct?.id) { existingProduct?.let(::draftFrom) }
 
     // A fresh pick from the map (§5) triggers the "name this location" dialog below, rather than
     // being appended straight away — the picker only returns coordinates + a geocoded address.
     LaunchedEffect(pickedMeetupLocation) {
         if (pickedMeetupLocation != null) viewModel.setPendingMeetupPick(pickedMeetupLocation)
     }
+
+    // Drafts only exist for brand-new listings — an Edit flow already has its real, published
+    // starting point, so it skips straight to the wizard below.
+    var showDraftPicker by remember { mutableStateOf(false) }
+    var savedDrafts by remember { mutableStateOf<List<SavedListingDraft>>(emptyList()) }
+    // Whether the wizard was reached by picking "Resume"/"Start New" on the draft picker — the
+    // step-0 back arrow only exists (and only ever leads back to the picker) when this is true;
+    // a wizard entered directly (no saved drafts to pick from) has no step-0 back arrow at all,
+    // since leaving now happens through the guarded bottom nav bar instead (see
+    // [onUnsavedChangesChanged]).
+    var cameFromDraftPicker by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (existingProduct == null) {
+            val drafts = ListingDraftRepository.loadAll(context)
+            if (drafts.isNotEmpty()) {
+                savedDrafts = drafts
+                showDraftPicker = true
+            }
+        }
+    }
+
+    // Reports unsaved-changes state up to the caller (see [onUnsavedChangesChanged]'s doc) — null
+    // while the picker itself is showing (nothing being actively edited), once a new-listing draft
+    // matches uiState.lastSavedDraft (nothing new to lose since the last save), or once an edit
+    // matches [originalEditDraft] (nothing changed from the published listing).
+    LaunchedEffect(showDraftPicker, uiState) {
+        val isDirty = if (existingProduct != null) {
+            draft != originalEditDraft
+        } else {
+            draft.isWorthSaving() && draft != uiState.lastSavedDraft
+        }
+        onUnsavedChangesChanged(
+            if (showDraftPicker || !isDirty) {
+                null
+            } else if (existingProduct != null) {
+                WizardUnsavedChanges(onSaveAndLeave = { onSaved ->
+                    viewModel.publish(contentResolver) { success ->
+                        if (success) {
+                            onSaved()
+                        } else {
+                            snackbarHostState.showSnackbar("Couldn't save your changes. Please try again.")
+                        }
+                    }
+                })
+            } else {
+                WizardUnsavedChanges(onSaveAndLeave = { onSaved ->
+                    ListingDraftRepository.save(
+                        context,
+                        SavedListingDraft(id = uiState.draftId, savedAt = System.currentTimeMillis(), draft = draft, step = step)
+                    )
+                    viewModel.markDraftSaved(draft)
+                    onSaved()
+                })
+            }
+        )
+    }
+
+    if (showDraftPicker) {
+        DraftPickerScreen(
+            drafts = savedDrafts,
+            onResume = { saved ->
+                viewModel.loadFromSavedDraft(saved)
+                cameFromDraftPicker = true
+                showDraftPicker = false
+            },
+            onDelete = { saved ->
+                ListingDraftRepository.delete(context, saved.id)
+                savedDrafts = savedDrafts.filterNot { it.id == saved.id }
+            },
+            onStartNew = {
+                cameFromDraftPicker = true
+                showDraftPicker = false
+            }
+        )
+        return
+    }
+
+    // Autosaves silently when the app is backgrounded (e.g. the user hits Home) mid-listing —
+    // there's no opportunity to prompt once the app leaves the foreground, so this is the safety
+    // net for that case; the explicit "Save as draft" button and the "leave without saving?"
+    // prompt guarding the bottom nav bar are the interactive paths. Deliberately NOT
+    // LocalLifecycleOwner.current here — inside a NavHost `composable{}` destination that resolves
+    // to the NavBackStackEntry's own lifecycle, which also STOPs on ordinary in-app navigation
+    // away from this screen (e.g. tapping "Leave" in that very prompt), which would silently
+    // re-save the draft the user just chose to discard. The Activity's own lifecycle only stops
+    // on genuine backgrounding.
+    val latestUiState by rememberUpdatedState(uiState)
+    val activity = context as? ComponentActivity
+    DisposableEffect(activity) {
+        if (activity == null) return@DisposableEffect onDispose {}
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && existingProduct == null && latestUiState.draft.isWorthSaving()) {
+                ListingDraftRepository.save(
+                    context,
+                    SavedListingDraft(id = latestUiState.draftId, savedAt = System.currentTimeMillis(), draft = latestUiState.draft, step = latestUiState.step)
+                )
+                viewModel.markDraftSaved(latestUiState.draft)
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
+
+    var showSaveDraftConfirm by remember { mutableStateOf(false) }
+    // Only shown/wired at step 0 when the wizard was reached via the draft picker — it just
+    // returns there, no confirmation needed since nothing is lost (the in-progress draft stays
+    // in the ViewModel). Leaving the wizard entirely is now guarded at the bottom nav bar instead.
+    val showStepZeroBack = existingProduct != null || cameFromDraftPicker
+    val handleBack: () -> Unit = {
+        if (step == 0) {
+            if (existingProduct == null && cameFromDraftPicker) showDraftPicker = true else onBackClick()
+        } else {
+            viewModel.goToStep(step - 1)
+        }
+    }
+    BackHandler(enabled = step > 0 || showStepZeroBack, onBack = handleBack)
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -348,14 +526,18 @@ fun ListingWizardScreen(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = { if (step == 0) onBackClick() else viewModel.goToStep(step - 1) },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                if (step > 0 || showStepZeroBack) {
+                    IconButton(
+                        onClick = handleBack,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(44.dp))
                 }
                 Text(
                     screenTitle,
@@ -419,13 +601,13 @@ fun ListingWizardScreen(
                     .padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                OutlinedButton(
-                    onClick = {
-                        scope.launch { snackbarHostState.showSnackbar("Draft saved — pick up where you left off anytime") }
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Save as draft")
+                if (existingProduct == null) {
+                    OutlinedButton(
+                        onClick = { showSaveDraftConfirm = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Save as draft")
+                    }
                 }
                 Button(
                     onClick = {
@@ -434,6 +616,7 @@ fun ListingWizardScreen(
                         } else {
                             viewModel.publish(contentResolver) { success ->
                                 if (success) {
+                                    if (existingProduct == null) ListingDraftRepository.delete(context, uiState.draftId)
                                     onPublished()
                                 } else {
                                     snackbarHostState.showSnackbar("Couldn't publish your listing. Please try again.")
@@ -468,7 +651,168 @@ fun ListingWizardScreen(
             }
         )
     }
+
+    if (showSaveDraftConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSaveDraftConfirm = false },
+            title = { Text("Save as draft?") },
+            text = { Text("You can pick up where you left off next time you come back.") },
+            confirmButton = {
+                Button(onClick = {
+                    ListingDraftRepository.save(
+                        context,
+                        SavedListingDraft(id = uiState.draftId, savedAt = System.currentTimeMillis(), draft = draft, step = step)
+                    )
+                    viewModel.markDraftSaved(draft)
+                    showSaveDraftConfirm = false
+                    scope.launch { snackbarHostState.showSnackbar("Draft saved") }
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDraftConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
+
+/** Shown when entering the "List an item" flow fresh while saved drafts exist — lets the seller resume one, delete one, or start clean. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DraftPickerScreen(
+    drafts: List<SavedListingDraft>,
+    onResume: (SavedListingDraft) -> Unit,
+    onDelete: (SavedListingDraft) -> Unit,
+    onStartNew: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Your Drafts",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Pick up where you left off, or start a brand-new listing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = onStartNew,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Start a New Listing")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            items(drafts, key = { it.id }) { saved ->
+                DraftCard(saved = saved, onResume = { onResume(saved) }, onDelete = { onDelete(saved) })
+            }
+            item { Spacer(modifier = Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun DraftCard(saved: SavedListingDraft, onResume: () -> Unit, onDelete: () -> Unit) {
+    val draft = saved.draft
+    var confirmingDelete by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onResume),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val thumbnail: Any? = draft.existingImageUrls.firstOrNull() ?: draft.imageUris.firstOrNull()
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                if (thumbnail != null) {
+                    AsyncImage(
+                        model = thumbnail,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Filled.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    draft.title.ifBlank { draft.category?.label ?: "Untitled draft" },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                val subtitle = listOfNotNull(
+                    draft.category?.label,
+                    "Saved ${formatDraftSavedAt(saved.savedAt)}"
+                ).joinToString(" · ")
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
+
+            IconButton(onClick = { confirmingDelete = true }) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete draft", tint = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("Delete this draft?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = { confirmingDelete = false; onDelete() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+private fun formatDraftSavedAt(millis: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(millis))
 
 @Composable
 private fun NameMeetupLocationDialog(address: String, initialName: String?, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
