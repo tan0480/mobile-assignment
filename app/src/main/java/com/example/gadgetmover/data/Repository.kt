@@ -385,6 +385,43 @@ object AuthRepository {
     }
 
     /**
+     * Called right after [io.github.jan.supabase.compose.auth.composable.NativeSignInResult.Success]
+     * from the "Continue with Google" button (`LoginScreen`) — the Credential Manager flow has
+     * already established the Supabase session by that point (its default `onIdToken` callback
+     * calls `auth.signInWith(IDToken)` itself), so this just loads the resulting profile the same
+     * way [restoreSession]/[login] do. [User.hasPassword] on the loaded profile reflects whether
+     * this was a first-time Google sign-up (see `handle_new_user()` in schema.sql) or a returning
+     * Google user who already created a password since.
+     */
+    suspend fun completeGoogleSignIn(): Boolean {
+        val user = supabase.auth.currentUserOrNull() ?: return false
+        loadProfileIntoCurrentUser(user.id, user.email.orEmpty())
+        return true
+    }
+
+    /**
+     * Sets a real Gadget Mover password for an account that doesn't have one yet (a Google
+     * sign-up — see [User.hasPassword]). Unlike [changePassword], there's no current password to
+     * verify: the user's already-live Google-established session is itself the proof of identity,
+     * so this goes straight to `auth.updateUser`.
+     */
+    suspend fun setInitialPassword(newPassword: String): Boolean {
+        val userId = currentUser.value?.id ?: return false
+        return try {
+            supabase.auth.updateUser { password = newPassword }
+            supabase.from("profiles").update({
+                set("has_password", true)
+            }) {
+                filter { eq("id", userId) }
+            }
+            currentUser.value = currentUser.value?.copy(hasPassword = true)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * Re-authenticates the already-logged-in current user with [password] — used to gate
      * sensitive actions (paying with the wallet, withdrawing) behind a password prompt without
      * a separate "verify password" endpoint. A successful call is just a normal sign-in for the

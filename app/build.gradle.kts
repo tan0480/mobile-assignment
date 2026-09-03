@@ -45,6 +45,13 @@ android {
         // Stripe's API lives only in the `create-payment-intent`/`get-payment-status` Supabase
         // Edge Functions' secrets, never here. Use a `pk_test_...` key — this app is test-mode only.
         buildConfigField("String", "STRIPE_PUBLISHABLE_KEY", "\"${localProperties.getProperty("STRIPE_PUBLISHABLE_KEY", "")}\"")
+        // The Web OAuth client id from Google Cloud Console — passed to supabase-kt's Compose Auth
+        // plugin (SupabaseClient.kt) for native "Sign in with Google" via Credential Manager. This
+        // is the Web client, not the Android one; see the setup steps this key's addition was
+        // documented with. Not a secret in the traditional sense (Google's own docs say the Web
+        // client id is safe to ship client-side), but still local.properties-sourced for the same
+        // easy-rotation reasons as the keys above.
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
 
         // Google Maps SDK for Android reads its key from this manifest placeholder (AndroidManifest.xml's
         // com.google.android.geo.API_KEY meta-data) rather than BuildConfig, since the SDK's native
@@ -86,6 +93,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.activity:activity-compose:1.13.0")
+    // Device fingerprint/face unlock for the "sign back in" app-lock and the wallet
+    // payment/withdraw confirmation gates — see util/BiometricAuthenticator.kt. 1.1.0 is the
+    // latest stable release on Google's Maven (checked directly; 1.2.0+ is still alpha-only).
+    implementation("androidx.biometric:biometric:1.1.0")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -111,6 +122,10 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:realtime-kt")
     // Calls the `create-payment-intent`/`get-payment-status` Edge Functions (see supabase/functions/).
     implementation("io.github.jan-tennert.supabase:functions-kt")
+    // Native "Sign in with Google" (Credential Manager) wired into auth-kt — see SupabaseClient.kt's
+    // ComposeAuth install and LoginScreen.kt. Transitively pulls in androidx.credentials and
+    // Google's Identity library, matching the BOM version above (published at the same 3.8.0).
+    implementation("io.github.jan-tennert.supabase:compose-auth")
     implementation("io.ktor:ktor-client-okhttp:3.5.1")
 
     // Stripe Android SDK — PaymentSheet, test mode only (publishable key gated, see above).

@@ -2,6 +2,8 @@ package com.example.gadgetmover.data
 
 import com.example.gadgetmover.BuildConfig
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.compose.auth.ComposeAuth
+import io.github.jan.supabase.compose.auth.googleNativeLogin
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.functions.Functions
 import io.github.jan.supabase.postgrest.Postgrest
@@ -31,4 +33,10 @@ val supabase = createSupabaseClient(
     // Live-subscribes to new `notifications` rows so a system tray notification can be posted
     // while the app is running (see NotificationRepository.startRealtimeListening).
     install(Realtime)
+    // Native "Sign in with Google" via Android's Credential Manager (LoginScreen.kt). Needs the
+    // *Web* OAuth client id (not the Android one) — see GOOGLE_WEB_CLIENT_ID's comment in
+    // app/build.gradle.kts for the Google Cloud Console + Supabase Dashboard setup this requires.
+    install(ComposeAuth) {
+        googleNativeLogin(serverClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID)
+    }
 }

@@ -52,7 +52,8 @@ data class ProfileRow(
     @SerialName("rating_count") val ratingCount: Int = 0,
     @SerialName("is_verified") val isVerified: Boolean = false,
     @SerialName("wallet_balance") val walletBalance: Double = 0.0,
-    @SerialName("created_at") val createdAt: String = ""
+    @SerialName("created_at") val createdAt: String = "",
+    @SerialName("has_password") val hasPassword: Boolean = true
 )
 
 fun ProfileRow.toUser(): User = User(
@@ -68,7 +69,8 @@ fun ProfileRow.toUser(): User = User(
     joinedDate = createdAt,
     isVerified = isVerified,
     walletBalance = walletBalance,
-    password = ""
+    password = "",
+    hasPassword = hasPassword
 )
 
 /**
