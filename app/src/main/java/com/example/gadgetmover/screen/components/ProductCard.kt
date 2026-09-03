@@ -141,23 +141,24 @@ fun ProductCard(
                 val showSalePrice = product.listingType == ListingType.BUY || product.listingType == ListingType.BOTH
                 val showRental = product.listingType == ListingType.RENT || product.listingType == ListingType.BOTH
                 Text(
-                    text = if (showSalePrice) formatMoney(product.price ?: 0.0) else formatMoney(product.rentalRatePerDay ?: 0.0),
+                    text = if (showSalePrice) formatMoney(product.price ?: 0.0) else "${formatMoney(product.rentalRatePerDay ?: 0.0)}/day",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (showRental && showSalePrice) {
-                    Text(
-                        text = "${formatMoney(product.rentalRatePerDay ?: 0.0)}/day",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = SuccessGreen,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                // Always rendered (blank when not a Sell+Rent listing) rather than only shown
+                // conditionally, so every card in the grid reserves the same vertical space for
+                // this line and cards don't end up staggered to different heights.
+                Text(
+                    text = if (showRental && showSalePrice) "${formatMoney(product.rentalRatePerDay ?: 0.0)}/day" else "",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SuccessGreen,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Row(

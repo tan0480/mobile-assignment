@@ -89,6 +89,7 @@ fun HomeScreen(
     val recent = ProductRepository.browsable.take(8)
     val user = AuthRepository.currentUser.value
     val isLoggedIn by AuthRepository.isLoggedIn
+    val sessionRestored by AuthRepository.sessionRestored
     var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -229,7 +230,7 @@ fun HomeScreen(
             bannerVisible = false
         }
         AnimatedVisibility(
-            visible = bannerVisible && !isLoggedIn,
+            visible = bannerVisible && sessionRestored && !isLoggedIn,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -307,7 +308,7 @@ private fun SectionHeader(title: String, actionLabel: String? = null, onAction: 
 private data class CategoryItem(val category: ProductCategory, val icon: ImageVector)
 
 private val categoryIcons = listOf(
-    CategoryItem(ProductCategory.MECHANICAL_KEYBOARD, Icons.Filled.Keyboard),
+    CategoryItem(ProductCategory.KEYBOARD, Icons.Filled.Keyboard),
     CategoryItem(ProductCategory.HEADPHONE, Icons.Filled.Headphones),
     CategoryItem(ProductCategory.AUDIO, Icons.Filled.SpeakerGroup),
     CategoryItem(ProductCategory.MOUSE, Icons.Filled.Mouse),

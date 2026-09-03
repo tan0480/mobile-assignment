@@ -52,10 +52,12 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.ProductRepository
+import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.ListingTypeBadge
+import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.util.formatMoney
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,12 +155,22 @@ fun MyListingsScreen(
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
+                                val showSalePrice = product.listingType == ListingType.BUY || product.listingType == ListingType.BOTH
+                                val showRental = product.listingType == ListingType.RENT || product.listingType == ListingType.BOTH
                                 Text(
-                                    product.price?.let { formatMoney(it) } ?: "${formatMoney(product.rentalRatePerDay ?: 0.0)}/day",
+                                    text = if (showSalePrice) formatMoney(product.price ?: 0.0) else "${formatMoney(product.rentalRatePerDay ?: 0.0)}/day",
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
+                                if (showRental && showSalePrice) {
+                                    Text(
+                                        text = "${formatMoney(product.rentalRatePerDay ?: 0.0)}/day",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = SuccessGreen
+                                    )
+                                }
                             }
                             IconButton(onClick = { pendingDelete = product }) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Remove listing", tint = MaterialTheme.colorScheme.error) // TODO: swap with custom ImageVector

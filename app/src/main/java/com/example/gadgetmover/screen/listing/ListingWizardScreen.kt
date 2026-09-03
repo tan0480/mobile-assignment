@@ -100,6 +100,7 @@ import com.example.gadgetmover.model.filter.isVisible
 import com.example.gadgetmover.screen.checkout.ShippingTier
 import com.example.gadgetmover.screen.explore.filter.DynamicFilterField
 import com.example.gadgetmover.util.parseListingNumber
+import com.example.gadgetmover.util.sanitizeMoneyInput
 import com.example.gadgetmover.util.validateListingNumbers
 
 import com.example.gadgetmover.ui.theme.BrandOrange
@@ -261,6 +262,17 @@ fun ListingWizardScreen(
 ) {
     val screenTitle = if (existingProduct != null) "Edit Listing" else "List an item"
     val isLoggedIn by AuthRepository.isLoggedIn
+    val sessionRestored by AuthRepository.sessionRestored
+
+    if (!sessionRestored) {
+        // Still checking for a persisted session — showing nothing here rather than the "log in"
+        // state below, which would otherwise flash for an already-logged-in user for the brief
+        // moment before AuthRepository.restoreSession() resolves.
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
 
     if (!isLoggedIn) {
         Scaffold(
@@ -836,7 +848,7 @@ private fun StepPricing(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
             LabeledField("Sale Price (RM)") {
                 OutlinedTextField(
                     value = draft.price,
-                    onValueChange = { onChange(draft.copy(price = it.filter { c -> c.isDigit() || c == '.' })) },
+                    onValueChange = { onChange(draft.copy(price = sanitizeMoneyInput(it))) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
@@ -849,7 +861,7 @@ private fun StepPricing(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
             LabeledField("Rental Rate (RM / day)") {
                 OutlinedTextField(
                     value = draft.rentalRate,
-                    onValueChange = { onChange(draft.copy(rentalRate = it.filter { c -> c.isDigit() || c == '.' })) },
+                    onValueChange = { onChange(draft.copy(rentalRate = sanitizeMoneyInput(it))) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,

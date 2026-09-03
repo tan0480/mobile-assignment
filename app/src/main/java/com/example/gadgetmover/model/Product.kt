@@ -14,7 +14,7 @@ enum class ListingType(val label: String) {
 
 @Serializable
 enum class ProductCategory(val label: String) {
-    MECHANICAL_KEYBOARD("Mechanical Keyboards"),
+    KEYBOARD("Keyboards"),
     HEADPHONE("Headphones"),
     AUDIO("Audio & Speakers"),
     MOUSE("Mice"),
