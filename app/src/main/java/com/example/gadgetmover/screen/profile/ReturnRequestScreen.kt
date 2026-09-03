@@ -61,6 +61,7 @@ import com.example.gadgetmover.model.ReturnRequestStatus
 import com.example.gadgetmover.model.ReturnRequestType
 import com.example.gadgetmover.model.returnRequestReasons
 import com.example.gadgetmover.util.formatMoney
+import com.example.gadgetmover.util.sanitizeMoneyInput
 import kotlinx.coroutines.launch
 
 private const val MAX_RETURN_REQUEST_PHOTOS = 5
@@ -207,7 +208,7 @@ private fun SubmitReturnRequestForm(order: BuyOrder, attemptsUsed: Int, onSubmit
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(
                 value = refundAmountText,
-                onValueChange = { refundAmountText = it },
+                onValueChange = { refundAmountText = sanitizeMoneyInput(it) },
                 label = { Text("Refund amount (max ${formatMoney(order.price)})") },
                 singleLine = true,
                 isError = refundAmountText.isNotBlank() && (refundAmount == null || refundAmount <= 0 || refundAmount > order.price),

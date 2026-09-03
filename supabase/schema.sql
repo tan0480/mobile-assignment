@@ -37,6 +37,11 @@ alter table public.profiles add column if not exists marketing_emails_enabled bo
 alter table public.profiles add column if not exists user_id text;
 create unique index if not exists profiles_user_id_key on public.profiles (user_id);
 
+-- Stripe Customer id backing the saved-payment-methods feature (Profile > Payment Methods,
+-- and PaymentSheet's saved-card UI at checkout). Written only by the get-or-create-stripe-customer
+-- Edge Function using the service-role key — see the revoke below.
+alter table public.profiles add column if not exists stripe_customer_id text;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles are publicly readable" on public.profiles;
@@ -51,10 +56,12 @@ create policy "users can update their own profile"
     with check (auth.uid() = id);
 
 -- Column-level grants narrow that row-level policy further: wallet_balance may only change via
--- credit_wallet()/debit_wallet() (see wallet_transactions below), and is_verified only by a real
--- verification flow if one is ever added — neither should be directly settable by the row's own
--- owner, or a client could grant itself funds or a verified badge with one PostgREST call.
-revoke update (wallet_balance, is_verified) on public.profiles from authenticated;
+-- credit_wallet()/debit_wallet() (see wallet_transactions below), is_verified only by a real
+-- verification flow if one is ever added, and stripe_customer_id only by the service-role
+-- get-or-create-stripe-customer Edge Function — none of these should be directly settable by the
+-- row's own owner, or a client could grant itself funds, a verified badge, or splice in someone
+-- else's Stripe customer with one PostgREST call.
+revoke update (wallet_balance, is_verified, stripe_customer_id) on public.profiles from authenticated;
 
 -- A new auth.users row always gets a matching profiles row automatically, so
 -- the app never has to (and never has RLS permission to) INSERT into

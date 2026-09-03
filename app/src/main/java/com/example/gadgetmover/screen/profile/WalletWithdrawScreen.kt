@@ -45,6 +45,7 @@ import com.example.gadgetmover.data.WalletRepository
 import com.example.gadgetmover.model.WalletTransactionType
 import com.example.gadgetmover.screen.components.PasswordConfirmDialog
 import com.example.gadgetmover.util.formatMoney
+import com.example.gadgetmover.util.sanitizeMoneyInput
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +75,7 @@ fun WalletWithdrawAmountScreen(onBackClick: () -> Unit, onContinue: (Double) -> 
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = amountText,
-                onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' } },
+                onValueChange = { amountText = sanitizeMoneyInput(it) },
                 label = { Text("Amount (RM)") },
                 singleLine = true,
                 isError = exceedsBalance,

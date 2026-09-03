@@ -29,6 +29,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 
 /**
+ * Everything `CheckoutScreen` needs to present PaymentSheet with saved-card support — bundled
+ * into one value (rather than a bare client secret alongside separate customer/key state) so the
+ * screen can never observe a client secret without its matching [PaymentSheet.CustomerConfiguration]
+ * from the same [CheckoutViewModel.startPayment] call.
+ */
+data class PaymentSheetPresentation(val clientSecret: String, val customerId: String, val ephemeralKey: String)
+
+/**
  * Owns every bit of Checkout's business logic — rental-day math, fulfillment/shipping/address
  * selection, price recomputation, Stripe payment orchestration, and order creation — so
  * `CheckoutScreen` only ever reads [uiState] and calls back into this class (spec §19).
@@ -46,8 +54,8 @@ class CheckoutViewModel(
     val uiState: StateFlow<CheckoutUiState> = _uiState
 
     /** Set once `startPayment()` succeeds — read by CheckoutScreen to present PaymentSheet. Not part of [CheckoutUiState] since it's a one-shot side-effect value, not persisted UI state. */
-    private val _clientSecretToPresent = MutableStateFlow<String?>(null)
-    val clientSecretToPresent: StateFlow<String?> = _clientSecretToPresent
+    private val _paymentSheetPresentation = MutableStateFlow<PaymentSheetPresentation?>(null)
+    val paymentSheetPresentation: StateFlow<PaymentSheetPresentation?> = _paymentSheetPresentation
 
     init {
         // Only non-null if this instance was reconstructed from a killed-and-restarted process
@@ -172,12 +180,18 @@ class CheckoutViewModel(
         }
         _uiState.update { it.copy(paymentState = PaymentState.CreatingPayment, errorMessage = null) }
         viewModelScope.launch {
+            val customerResult = CheckoutRepository.getOrCreateStripeCustomer()
+            val customer = customerResult.getOrNull()
+            if (customerResult.isFailure || customer == null) {
+                _uiState.update { it.copy(paymentState = PaymentState.Failed(checkoutUserMessage(customerResult.exceptionOrNull(), "Couldn't start payment. Please try again."))) }
+                return@launch
+            }
             val amountCents = (state.finalTotal * 100).roundToLong()
-            CheckoutRepository.createPaymentIntent(amountCents).fold(
+            CheckoutRepository.createPaymentIntent(amountCents, customer.customerId).fold(
                 onSuccess = { info ->
                     _uiState.update { it.copy(paymentState = PaymentState.PaymentReady, lastPaymentIntentId = info.paymentIntentId) }
                     savedStateHandle[KEY_LAST_PAYMENT_INTENT_ID] = info.paymentIntentId
-                    _clientSecretToPresent.value = info.clientSecret
+                    _paymentSheetPresentation.value = PaymentSheetPresentation(info.clientSecret, customer.customerId, customer.ephemeralKey)
                 },
                 onFailure = { error ->
                     _uiState.update { it.copy(paymentState = PaymentState.Failed(checkoutUserMessage(error, "Couldn't start payment. Please try again."))) }

@@ -25,7 +25,11 @@ import java.time.temporal.ChronoUnit
 object CheckoutRepository {
 
     @Serializable
-    private data class CreatePaymentIntentRequest(val amount: Long, val currency: String = "myr")
+    private data class CreatePaymentIntentRequest(
+        val amount: Long,
+        val currency: String = "myr",
+        @SerialName("customer_id") val customerId: String? = null
+    )
 
     @Serializable
     data class PaymentIntentInfo(
@@ -39,15 +43,63 @@ object CheckoutRepository {
     @Serializable
     data class PaymentStatusInfo(val status: String)
 
-    /** [amountCents] is the final total in the smallest currency unit (sen, i.e. RM × 100) — Stripe amounts are always integer minor units. */
-    suspend fun createPaymentIntent(amountCents: Long): Result<PaymentIntentInfo> = runCatching {
-        supabase.functions.invoke("create-payment-intent", body = CreatePaymentIntentRequest(amount = amountCents)).body()
+    @Serializable
+    data class StripeCustomerInfo(
+        @SerialName("customer_id") val customerId: String,
+        @SerialName("ephemeral_key") val ephemeralKey: String
+    )
+
+    @Serializable
+    data class SetupIntentInfo(@SerialName("client_secret") val clientSecret: String)
+
+    @Serializable
+    data class StripePaymentMethod(
+        val id: String,
+        val brand: String,
+        val last4: String,
+        @SerialName("exp_month") val expMonth: Int,
+        @SerialName("exp_year") val expYear: Int,
+        @SerialName("is_default") val isDefault: Boolean
+    )
+
+    @Serializable
+    private data class ListPaymentMethodsResponse(@SerialName("payment_methods") val paymentMethods: List<StripePaymentMethod>)
+
+    @Serializable
+    private data class PaymentMethodIdRequest(@SerialName("payment_method_id") val paymentMethodId: String)
+
+    /** [amountCents] is the final total in the smallest currency unit (sen, i.e. RM × 100) — Stripe amounts are always integer minor units. [customerId], when non-null, attaches the payment to that Stripe Customer with `setup_future_usage` so the card used gets saved for reuse — see [getOrCreateStripeCustomer]. */
+    suspend fun createPaymentIntent(amountCents: Long, customerId: String? = null): Result<PaymentIntentInfo> = runCatching {
+        supabase.functions.invoke("create-payment-intent", body = CreatePaymentIntentRequest(amount = amountCents, customerId = customerId)).body()
     }
 
     /** Confirms server-side (via Stripe's own API, not a client-trusted flag) whether [paymentIntentId] actually succeeded — called right after `PaymentSheetResult.Completed`, before any order is created. */
     suspend fun getPaymentStatus(paymentIntentId: String): Result<PaymentStatusInfo> = runCatching {
         supabase.functions.invoke("get-payment-status", body = GetPaymentStatusRequest(paymentIntentId)).body()
     }
+
+    /** Ensures the current user has a Stripe Customer (creating one server-side on first call) and mints a fresh ephemeral key for it — needed by PaymentSheet's [com.stripe.android.paymentsheet.PaymentSheet.CustomerConfiguration] wherever it's presented with saved-card support (Checkout, the Payment Methods page's add-card flow). */
+    suspend fun getOrCreateStripeCustomer(): Result<StripeCustomerInfo> = runCatching {
+        supabase.functions.invoke("get-or-create-stripe-customer").body()
+    }
+
+    /** Client secret for a no-charge card-save flow — presented via `PaymentSheet.presentWithSetupIntent`. */
+    suspend fun createSetupIntent(): Result<SetupIntentInfo> = runCatching {
+        supabase.functions.invoke("create-setup-intent").body()
+    }
+
+    /** The current user's saved cards, newest-first as Stripe returns them — empty (not an error) if they have no Stripe customer yet. */
+    suspend fun listPaymentMethods(): Result<List<StripePaymentMethod>> = runCatching {
+        supabase.functions.invoke("list-payment-methods").body<ListPaymentMethodsResponse>().paymentMethods
+    }
+
+    suspend fun setDefaultPaymentMethod(paymentMethodId: String): Result<Unit> = runCatching {
+        supabase.functions.invoke("set-default-payment-method", body = PaymentMethodIdRequest(paymentMethodId))
+    }.map { }
+
+    suspend fun detachPaymentMethod(paymentMethodId: String): Result<Unit> = runCatching {
+        supabase.functions.invoke("detach-payment-method", body = PaymentMethodIdRequest(paymentMethodId))
+    }.map { }
 
     @Serializable
     private data class GetBookedRentalRangesParams(@SerialName("p_product_id") val productId: String)

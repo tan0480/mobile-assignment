@@ -51,6 +51,7 @@ import com.example.gadgetmover.BuildConfig
 import com.example.gadgetmover.screen.checkout.PaymentState
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.util.formatMoney
+import com.example.gadgetmover.util.sanitizeMoneyInput
 import com.stripe.android.PaymentConfiguration
 import com.stripe.android.paymentsheet.PaymentSheet
 
@@ -77,7 +78,7 @@ fun WalletAddFundsAmountScreen(onBackClick: () -> Unit, onContinue: (Double) -> 
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = amountText,
-                onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' } },
+                onValueChange = { amountText = sanitizeMoneyInput(it) },
                 label = { Text("Amount (RM)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),

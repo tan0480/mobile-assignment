@@ -108,7 +108,7 @@ fun CheckoutScreen(
         factory = remember(product.id, transactionType, negotiatedPrice) { checkoutViewModelFactory(product, transactionType, negotiatedPrice) }
     )
     val uiState by viewModel.uiState.collectAsState()
-    val clientSecret by viewModel.clientSecretToPresent.collectAsState()
+    val paymentSheetPresentation by viewModel.paymentSheetPresentation.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -117,11 +117,17 @@ fun CheckoutScreen(
 
     val paymentSheet = PaymentSheet.Builder(resultCallback = viewModel::onPaymentSheetResult).build()
 
-    LaunchedEffect(clientSecret) {
-        clientSecret?.let { secret ->
+    LaunchedEffect(paymentSheetPresentation) {
+        paymentSheetPresentation?.let { presentation ->
             paymentSheet.presentWithPaymentIntent(
-                secret,
-                PaymentSheet.Configuration(merchantDisplayName = "Gadget Mover")
+                presentation.clientSecret,
+                PaymentSheet.Configuration(
+                    merchantDisplayName = "Gadget Mover",
+                    customer = PaymentSheet.CustomerConfiguration(
+                        id = presentation.customerId,
+                        ephemeralKeySecret = presentation.ephemeralKey
+                    )
+                )
             )
         }
     }
