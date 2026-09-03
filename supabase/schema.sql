@@ -42,6 +42,13 @@ create unique index if not exists profiles_user_id_key on public.profiles (user_
 -- Edge Function using the service-role key — see the revoke below.
 alter table public.profiles add column if not exists stripe_customer_id text;
 
+-- False for an account created via Google Sign-In that has never set a Gadget Mover password —
+-- set at insert time by handle_new_user() below (from auth.users' own provider metadata, not
+-- something the client claims), and flipped true by the app once the seller sets one (see
+-- AccountInfoScreen / the "create a password" prompt gating Buy/Rent/List an item). Defaults true
+-- so every pre-existing email/password account is unaffected by this column's addition.
+alter table public.profiles add column if not exists has_password boolean not null default true;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles are publicly readable" on public.profiles;
@@ -73,8 +80,15 @@ security definer
 set search_path = public
 as $$
 begin
-    insert into public.profiles (id, email)
-    values (new.id, coalesce(new.email, ''));
+    -- has_password reads the real signup provider straight off auth.users' own metadata
+    -- (never something the client could claim) — 'email' means a password was actually set at
+    -- signup, anything else (e.g. 'google') means the account only has native-auth credentials.
+    insert into public.profiles (id, email, has_password)
+    values (
+        new.id,
+        coalesce(new.email, ''),
+        coalesce(new.raw_app_meta_data->>'provider', 'email') = 'email'
+    );
     return new;
 end;
 $$;
