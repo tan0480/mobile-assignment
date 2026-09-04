@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Where "Take Photo" camera captures write their temp files to, before being handed off as
+         a content:// Uri (see AddPhotoTile/createCameraCaptureUri in screen/components/PhotoPicker.kt).
+         One entry per feature's cameraSubDir — a subdir not listed here makes FileProvider throw. -->
+    <cache-path name="listing_photos" path="listing_photos/" />
+    <cache-path name="return_request_photos" path="return_request_photos/" />
+</paths>
