@@ -4,9 +4,6 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,8 +42,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
@@ -107,6 +102,7 @@ import com.example.gadgetmover.model.Condition
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.MeetupLocation
+import com.example.gadgetmover.screen.components.AddPhotoTile
 import com.example.gadgetmover.screen.components.NameMeetupLocationDialog
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.model.Product
@@ -124,8 +120,6 @@ import com.example.gadgetmover.util.sanitizeMoneyInput
 import com.example.gadgetmover.util.validateListingNumbers
 
 import com.example.gadgetmover.ui.theme.BrandOrange
-import androidx.core.content.FileProvider
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -1273,6 +1267,7 @@ private fun StepPricing(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(selected = selected, onClick = null)
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("${address.receiverName}   ${address.phoneNumber}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                     Text(address.fullAddress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
@@ -1309,34 +1304,8 @@ private fun StepPricing(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
 
 private const val MAX_LISTING_PHOTOS = 8
 
-/** A fresh cache file the system Camera app can write a capture into, exposed as a content:// Uri via [FileProvider] (Camera can't write to a plain file:// path). */
-private fun createCameraCaptureUri(context: android.content.Context): Uri {
-    val dir = File(context.cacheDir, "listing_photos").apply { mkdirs() }
-    val file = File(dir, "IMG_${System.currentTimeMillis()}.jpg")
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-}
-
 @Composable
 private fun StepPhotos(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
-    val context = LocalContext.current
-    val pickPhotos = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(MAX_LISTING_PHOTOS)
-    ) { uris -> if (uris.isNotEmpty()) onChange(draft.copy(imageUris = uris)) }
-
-    // TakePicture() writes into a Uri we hand it up front rather than returning one itself, so
-    // the Uri to append on success has to be stashed here between launch and callback.
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
-    val takePhoto = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        val uri = pendingCameraUri
-        pendingCameraUri = null
-        if (success && uri != null) {
-            onChange(draft.copy(imageUris = draft.imageUris + uri))
-        }
-    }
-    var showPhotoSourceMenu by remember { mutableStateOf(false) }
-
     val totalCount = draft.existingImageUrls.size + draft.imageUris.size
 
     Column {
@@ -1387,36 +1356,12 @@ private fun StepPhotos(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
             }
             if (totalCount < MAX_LISTING_PHOTOS) {
                 item {
-                    Box {
-                        Box(
-                            modifier = Modifier
-                                .size(84.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { showPhotoSourceMenu = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.AddAPhoto, contentDescription = "Add photo") // TODO: swap with custom ImageVector
-                        }
-                        DropdownMenu(expanded = showPhotoSourceMenu, onDismissRequest = { showPhotoSourceMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Take Photo") },
-                                onClick = {
-                                    showPhotoSourceMenu = false
-                                    val uri = createCameraCaptureUri(context)
-                                    pendingCameraUri = uri
-                                    takePhoto.launch(uri)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Choose from Gallery") },
-                                onClick = {
-                                    showPhotoSourceMenu = false
-                                    pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                }
-                            )
-                        }
-                    }
+                    AddPhotoTile(
+                        maxSelectable = MAX_LISTING_PHOTOS,
+                        cameraSubDir = "listing_photos",
+                        onPhotosPicked = { uris -> onChange(draft.copy(imageUris = uris)) },
+                        onPhotoCaptured = { uri -> onChange(draft.copy(imageUris = draft.imageUris + uri)) }
+                    )
                 }
             }
         }

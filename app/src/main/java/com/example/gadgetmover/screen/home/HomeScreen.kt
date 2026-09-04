@@ -65,6 +65,7 @@ import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductCategory
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
@@ -91,10 +92,13 @@ fun HomeScreen(
     val isLoggedIn by AuthRepository.isLoggedIn
     val sessionRestored by AuthRepository.sessionRestored
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         ProductRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     AppPullToRefreshBox(
@@ -242,6 +246,7 @@ fun HomeScreen(
                 onDismiss = { bannerVisible = false }
             )
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
     }
     }
 }

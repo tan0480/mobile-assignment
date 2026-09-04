@@ -55,6 +55,7 @@ import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ListingTypeBadge
 import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.util.formatMoney
@@ -69,11 +70,14 @@ fun MyListingsScreen(
         .filter { it.status != ProductStatus.SOLD }
     var pendingDelete by remember { mutableStateOf<Product?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         ProductRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     Scaffold(
@@ -165,6 +169,7 @@ fun MyListingsScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 

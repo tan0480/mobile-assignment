@@ -68,6 +68,7 @@ import com.example.gadgetmover.model.filter.CategoryFilterState
 import com.example.gadgetmover.model.filter.CommonFilterFields
 import com.example.gadgetmover.model.filter.applyCategoryFilterState
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
 import com.example.gadgetmover.screen.explore.filter.CategoryPickerSheet
 import com.example.gadgetmover.screen.explore.filter.DynamicFilterBottomSheet
@@ -129,11 +130,14 @@ fun ExploreScreen(
     val results = ProductRepository.search(filterState).applyCategoryFilterState(categoryFilterState, combinedSchema)
 
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     var userResults by remember { mutableStateOf<List<User>>(emptyList()) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         ProductRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     // Debounced so every keystroke doesn't fire its own network query — only searches once
@@ -279,6 +283,7 @@ fun ExploreScreen(
             }
         }
     }
+    BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
     }
 
     if (showCategoryPicker) {
