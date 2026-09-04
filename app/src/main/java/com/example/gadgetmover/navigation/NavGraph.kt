@@ -1,5 +1,6 @@
 package com.example.gadgetmover.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
@@ -131,6 +132,21 @@ fun GadgetMoverNavGraph() {
     // see `interceptNavigation` below.
     var currentWizardChanges by remember { mutableStateOf<WizardUnsavedChanges?>(null) }
     var pendingLeaveNav by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Every bottom-nav tab switch clears the back stack down to just the tapped tab (see
+    // GadgetMoverBottomBar's popUpTo(0)), so system/gesture back from a non-Home tab's root — or
+    // from any screen reached via a flow that similarly cleared history (e.g. post-login) — would
+    // otherwise find nothing left to pop and exit the app straight from there. Only enabled when
+    // there's genuinely nothing left to pop and we're not already on Home, so it never overrides
+    // NavHost's own back handling for a normal push (e.g. Home -> ProductDetail).
+    BackHandler(enabled = navController.previousBackStackEntry == null && currentRoute != Screen.Home.route) {
+        val goHome = { navController.navigate(Screen.Home.route) { popUpTo(0); launchSingleTop = true } }
+        if (currentRoute == Screen.ListingWizard.route && currentWizardChanges != null) {
+            pendingLeaveNav = goHome
+        } else {
+            goHome()
+        }
+    }
 
     // A Google sign-in account has no Gadget Mover password yet (see User.hasPassword) — Buy,
     // Rent, and starting a new listing all funnel through this before they're allowed to proceed.
