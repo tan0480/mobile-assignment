@@ -68,6 +68,8 @@ data class Product(
     val sellerName: String,
     val sellerRating: Float,
     val sellerAvatarUrl: String = "",
+    /** The seller's own Malaysia state (see `model/filter/MalaysiaStates.kt`), resolved from `profiles.state` the same way [sellerName]/[sellerRating] are — matched by [com.example.gadgetmover.model.filter.CommonFilterFields.sellerState]. Blank when the seller has never set a meet-up location (see `util/SellerLocationResolver.kt` for how it gets populated). */
+    val sellerState: String = "",
     val location: String,
     val postedDate: String,
     val isFeatured: Boolean = false,

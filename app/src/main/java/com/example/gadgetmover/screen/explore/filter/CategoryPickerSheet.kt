@@ -28,7 +28,7 @@ import com.example.gadgetmover.model.ProductCategory
  * Shown when the user taps the filter button while browsing "All" categories: advanced filters
  * are category-specific, so there's nothing meaningful to show until a category is picked. This
  * doubles as the category-selection step (equivalent to tapping a category pill) — picking one
- * here both narrows the browsed category and opens that category's [DynamicFilterBottomSheet].
+ * here both narrows the browsed category and opens that category's [DynamicFilterScreen].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

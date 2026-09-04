@@ -126,6 +126,7 @@ fun ProductDetailScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             ProductDetailTopBar(
                 product = product,

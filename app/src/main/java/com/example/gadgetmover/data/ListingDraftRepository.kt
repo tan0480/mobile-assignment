@@ -2,6 +2,7 @@ package com.example.gadgetmover.data
 
 import android.content.Context
 import com.example.gadgetmover.screen.listing.ListingDraft
+import io.github.jan.supabase.auth.auth
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -22,16 +23,26 @@ internal data class SavedListingDraft(
  * `ListingWizardScreen`'s lifecycle observer) can resume it from the draft picker shown the next
  * time they start a new listing. Same SharedPreferences + kotlinx.serialization JSON approach as
  * [ProductCache], just keyed to a list of drafts instead of a list of products.
+ *
+ * Storage is namespaced per signed-in user (see [draftsKey]) rather than one shared key, so a
+ * device shared by multiple accounts never shows one user's in-progress draft to another —
+ * there's no separate reset-on-logout step needed since every read/write already resolves
+ * [currentUserId] fresh and every method is a no-op (empty list / no-op save) while logged out.
  */
 internal object ListingDraftRepository {
 
     private const val PREFS_NAME = "gadget_mover_prefs"
-    private const val KEY_DRAFTS_JSON = "listing_drafts_json"
+    private const val KEY_DRAFTS_JSON_PREFIX = "listing_drafts_json_"
     private val json = Json { ignoreUnknownKeys = true }
 
+    private fun currentUserId(): String? = supabase.auth.currentUserOrNull()?.id
+
+    private fun draftsKey(userId: String): String = "$KEY_DRAFTS_JSON_PREFIX$userId"
+
     fun loadAll(context: Context): List<SavedListingDraft> {
+        val userId = currentUserId() ?: return emptyList()
         val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_DRAFTS_JSON, null) ?: return emptyList()
+            .getString(draftsKey(userId), null) ?: return emptyList()
         return try {
             json.decodeFromString<List<SavedListingDraft>>(raw).sortedByDescending { it.savedAt }
         } catch (e: Exception) {
@@ -39,17 +50,19 @@ internal object ListingDraftRepository {
         }
     }
 
-    /** Upserts by [SavedListingDraft.id] — saving the same draft again (e.g. tapping "Save as draft" twice) overwrites rather than duplicates. */
+    /** Upserts by [SavedListingDraft.id] — saving the same draft again (e.g. tapping "Save as draft" twice) overwrites rather than duplicates. No-op while logged out. */
     fun save(context: Context, draft: SavedListingDraft) {
+        val userId = currentUserId() ?: return
         val updated = loadAll(context).filterNot { it.id == draft.id } + draft
-        persist(context, updated)
+        persist(context, userId, updated)
     }
 
     fun delete(context: Context, id: String) {
-        persist(context, loadAll(context).filterNot { it.id == id })
+        val userId = currentUserId() ?: return
+        persist(context, userId, loadAll(context).filterNot { it.id == id })
     }
 
-    private fun persist(context: Context, drafts: List<SavedListingDraft>) {
+    private fun persist(context: Context, userId: String, drafts: List<SavedListingDraft>) {
         val raw = try {
             json.encodeToString(drafts)
         } catch (e: Exception) {
@@ -57,7 +70,7 @@ internal object ListingDraftRepository {
         }
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_DRAFTS_JSON, raw)
+            .putString(draftsKey(userId), raw)
             .apply()
     }
 }

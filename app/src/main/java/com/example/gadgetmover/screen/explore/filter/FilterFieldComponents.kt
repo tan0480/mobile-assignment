@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -398,7 +399,13 @@ fun NumberInputFieldWidget(
 private fun cleanNumberText(value: Float): String =
     if (value == value.toInt().toFloat()) value.toInt().toString() else value.toString()
 
-/** `FilterType.NumberRange` — a continuous dual-ended range, e.g. price or capacity bounds. */
+/**
+ * `FilterType.NumberRange` — a continuous dual-ended range, e.g. price or capacity bounds. The
+ * slider itself can only ever land within [FilterType.NumberRange.min]/[max], but a buyer who
+ * genuinely wants something outside that (e.g. "> 64GB" RAM, "< 500W" PSU) can still type it via
+ * the custom-range inputs below — those aren't clamped, so [range] itself can carry a value past
+ * either bound; the slider just displays its own coerced view of it in that case.
+ */
 @Composable
 fun NumberRangeField(
     type: FilterType.NumberRange,
@@ -406,17 +413,57 @@ fun NumberRangeField(
     onChange: (ClosedFloatingPointRange<Float>) -> Unit
 ) {
     val steps = if (type.step > 0f) (((type.max - type.min) / type.step).toInt() - 1).coerceAtLeast(0) else 0
+    val isCustomBelow = range.start < type.min
+    val isCustomAbove = range.endInclusive > type.max
     Text(
-        "${formatRangeBound(type, range.start)} - ${formatRangeBound(type, range.endInclusive)}",
+        "${formatRangeBound(type, range.start)}${if (isCustomBelow) " (custom)" else ""}" +
+            " - ${formatRangeBound(type, range.endInclusive)}${if (isCustomAbove) " (custom)" else ""}",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     RangeSlider(
-        value = range,
+        value = range.start.coerceIn(type.min, type.max)..range.endInclusive.coerceIn(type.min, type.max),
         onValueChange = onChange,
         valueRange = type.min..type.max,
         steps = steps
     )
+
+    var showCustomRange by remember { mutableStateOf(isCustomBelow || isCustomAbove) }
+    TextButton(onClick = { showCustomRange = !showCustomRange }) {
+        Text(if (showCustomRange) "Hide custom min/max" else "Outside this range? Enter a custom min or max")
+    }
+    if (showCustomRange) {
+        var minInput by remember { mutableStateOf(if (isCustomBelow) cleanNumberText(range.start) else "") }
+        var maxInput by remember { mutableStateOf(if (isCustomAbove) cleanNumberText(range.endInclusive) else "") }
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = minInput,
+                onValueChange = { input ->
+                    if (input.count { it == '.' } <= 1 && input.all { it.isDigit() || it == '.' }) {
+                        minInput = input
+                        input.toFloatOrNull()?.let { onChange(it..range.endInclusive) }
+                    }
+                },
+                label = { Text("Min ${type.unit.trim()}") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+            OutlinedTextField(
+                value = maxInput,
+                onValueChange = { input ->
+                    if (input.count { it == '.' } <= 1 && input.all { it.isDigit() || it == '.' }) {
+                        maxInput = input
+                        input.toFloatOrNull()?.let { onChange(range.start..it) }
+                    }
+                },
+                label = { Text("Max ${type.unit.trim()}") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+        }
+    }
 }
 
 /** The unit picker (e.g. "GB" / "TB") shown above a [FilterType.NumberRangeWithUnitToggle] field, in either listing or filter mode. */

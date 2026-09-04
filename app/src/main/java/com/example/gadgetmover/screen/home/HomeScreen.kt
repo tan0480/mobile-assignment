@@ -61,15 +61,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.AuthRepository
+import com.example.gadgetmover.data.BrowseHistoryRepository
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductCategory
+import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.BrandOrange
+import com.example.gadgetmover.util.ListingScoreCalculator
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -78,7 +84,7 @@ fun HomeScreen(
     onProductClick: (Product) -> Unit,
     onCategoryClick: (ProductCategory) -> Unit,
     onSearchSubmit: (String) -> Unit,
-    onSeeAllFeatured: () -> Unit,
+    onSeeAllCategories: () -> Unit,
     onLoginClick: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -86,9 +92,32 @@ fun HomeScreen(
     // reading it directly here (rather than caching a one-time snapshot) makes Home reactively
     // pick up whatever `refreshFromRemote()` below just pulled from Supabase, including listings
     // published from a different device.
-    val featured = ProductRepository.getFeatured()
-    val recent = ProductRepository.browsable.take(8)
     val user = AuthRepository.currentUser.value
+    val savedProducts = ProductRepository.getSaved()
+    val browsedProducts = BrowseHistoryRepository.recentProducts()
+    val categoryInterest = (browsedProducts.map { it.category } + savedProducts.flatMap { listOf(it.category, it.category) })
+        .groupingBy { it }
+        .eachCount()
+        .entries
+        .sortedByDescending { it.value }
+        .take(3)
+        .map { it.key }
+        .toSet()
+    val hasInterestHistory = browsedProducts.isNotEmpty() || savedProducts.isNotEmpty()
+    val currentUserId = user?.id
+    val recommended = ProductRepository.products
+        .asSequence()
+        .filterNot { it.sellerId == currentUserId || it.status == ProductStatus.SOLD }
+        .sortedByDescending { product ->
+            val interestScore = if (hasInterestHistory && product.category in categoryInterest) 40.0 else 0.0
+            val freshnessScore = recommendationFreshnessScore(product.postedDate)
+            val favoriteScore = if (ProductRepository.isSaved(product.id)) 15.0 else 0.0
+            val baseScore = interestScore + freshnessScore + favoriteScore
+            val completenessRatio = ListingScoreCalculator.calculateCompletenessRatio(product)
+            baseScore * ListingScoreCalculator.boostMultiplier(completenessRatio)
+        }
+        .take(12)
+        .toList()
     val isLoggedIn by AuthRepository.isLoggedIn
     val sessionRestored by AuthRepository.sessionRestored
     var isRefreshing by remember { mutableStateOf(false) }
@@ -110,7 +139,9 @@ fun HomeScreen(
                 isRefreshing = false
             }
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -187,36 +218,16 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
-                    SectionHeader(title = "Categories")
+                    SectionHeader(title = "Categories", actionLabel = "See all", onAction = onSeeAllCategories)
                 }
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
                     CategoryGrid(onCategoryClick = onCategoryClick)
                 }
 
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
-                    SectionHeader(title = "Featured Listings", actionLabel = "See All", onAction = onSeeAllFeatured)
+                    SectionHeader(title = "Recommended for You")
                 }
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 4.dp)
-                    ) {
-                        items(featured) { product ->
-                            ProductCard(
-                                product = product,
-                                isSaved = ProductRepository.isSaved(product.id),
-                                onClick = { onProductClick(product) },
-                                onSaveClick = { scope.launch { ProductRepository.toggleSaved(product.id) } },
-                                modifier = Modifier.width(190.dp)
-                            )
-                        }
-                    }
-                }
-
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
-                    SectionHeader(title = "Recently Listed")
-                }
-                items(recent) { product ->
+                items(recommended, key = { it.id }) { product ->
                     ProductCard(
                         product = product,
                         isSaved = ProductRepository.isSaved(product.id),
@@ -249,6 +260,15 @@ fun HomeScreen(
         BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
     }
     }
+}
+
+private fun recommendationFreshnessScore(postedDate: String): Double {
+    if (postedDate.equals("Just now", ignoreCase = true)) return 30.0
+    val postedInstant = runCatching { OffsetDateTime.parse(postedDate).toInstant() }
+        .recoverCatching { Instant.parse(postedDate) }
+        .getOrNull() ?: return 0.0
+    val ageDays = ChronoUnit.DAYS.between(postedInstant, Instant.now()).coerceAtLeast(0)
+    return (30L - ageDays.coerceAtMost(30L)).toDouble()
 }
 
 @Composable
