@@ -1,8 +1,6 @@
 package com.example.gadgetmover.screen.profile
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,7 +65,10 @@ import com.example.gadgetmover.model.ReturnRequest
 import com.example.gadgetmover.model.ReturnRequestStatus
 import com.example.gadgetmover.model.ReturnRequestType
 import com.example.gadgetmover.model.returnRequestReasons
+import com.example.gadgetmover.screen.components.AddPhotoTile
+import com.example.gadgetmover.screen.components.FullScreenImageViewer
 import com.example.gadgetmover.screen.components.MeetupLocationCards
+import com.example.gadgetmover.screen.components.MeetupLocationCheckboxCards
 import com.example.gadgetmover.screen.components.NameMeetupLocationDialog
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.screen.components.SelectableCard
@@ -96,7 +97,8 @@ fun ReturnRequestScreen(
     pickedAddressId: String? = null,
     onChangeAddress: () -> Unit = {},
     pickedMeetupLocation: PickedLocation? = null,
-    onPickMeetupLocation: () -> Unit = {}
+    onPickMeetupLocation: () -> Unit = {},
+    onContactSupportClick: () -> Unit = {}
 ) {
     if (order !is BuyOrder) {
         onBackClick()
@@ -134,7 +136,9 @@ fun ReturnRequestScreen(
                     order = order,
                     product = product,
                     attemptsUsed = requests.size,
+                    previousRequest = requests.lastOrNull(),
                     onSubmitted = onFinished,
+                    onContactSupportClick = onContactSupportClick,
                     pickedMeetupLocation = pickedMeetupLocation,
                     onPickMeetupLocation = onPickMeetupLocation
                 )
@@ -145,7 +149,6 @@ fun ReturnRequestScreen(
                 } else {
                     DecideReturnRequestForm(
                         request = pending,
-                        product = product,
                         pickedAddressId = pickedAddressId,
                         onChangeAddress = onChangeAddress,
                         onDecided = onFinished
@@ -161,7 +164,9 @@ private fun SubmitReturnRequestForm(
     order: BuyOrder,
     product: Product?,
     attemptsUsed: Int,
+    previousRequest: ReturnRequest?,
     onSubmitted: () -> Unit,
+    onContactSupportClick: () -> Unit,
     pickedMeetupLocation: PickedLocation? = null,
     onPickMeetupLocation: () -> Unit = {}
 ) {
@@ -175,22 +180,30 @@ private fun SubmitReturnRequestForm(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onContactSupportClick) {
+                Text("Contact Customer Support")
+            }
         }
         return
     }
 
-    var reason by remember { mutableStateOf(returnRequestReasons.first()) }
-    var reasonOther by remember { mutableStateOf("") }
-    var requestType by remember { mutableStateOf(ReturnRequestType.RETURN) }
-    val initialMeetupLocations = remember(product) { product?.meetupLocations.orEmpty() }
+    // Attempt 2 (previousRequest is attempt 1, REJECTED) starts from what the buyer already
+    // entered rather than a blank form — they're editing/resubmitting, not starting over.
+    var reason by remember { mutableStateOf(previousRequest?.reasonCode ?: returnRequestReasons.first()) }
+    var reasonOther by remember { mutableStateOf(previousRequest?.reasonOtherText ?: "") }
+    var requestType by remember { mutableStateOf(previousRequest?.requestType ?: ReturnRequestType.RETURN) }
+    val initialMeetupLocations = remember(product, previousRequest) {
+        (product?.meetupLocations.orEmpty() + previousRequest?.meetupLocations.orEmpty()).distinctBy { it.id }
+    }
     // The buyer isn't limited to the listing's own declared spots — they can add a fresh one just
-    // for this return (see onPickMeetupLocation below), so this starts from the product's list but
-    // grows independently of it.
+    // for this return (see onPickMeetupLocation below), so this starts from the product's list (plus
+    // whatever they added last time) but grows independently of it.
     var availableMeetups by remember { mutableStateOf(initialMeetupLocations) }
-    var returnMethod by remember { mutableStateOf(if (initialMeetupLocations.isNotEmpty()) ReturnMethod.MEETUP else ReturnMethod.SHIPPING) }
-    var selectedMeetup by remember { mutableStateOf<MeetupLocation?>(null) }
-    var refundAmountText by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var selectedMethods by remember { mutableStateOf(previousRequest?.returnMethods ?: emptySet()) }
+    var selectedMeetups by remember { mutableStateOf(previousRequest?.meetupLocations?.toSet() ?: emptySet()) }
+    var refundAmountText by remember { mutableStateOf(previousRequest?.refundAmount?.toString().orEmpty()) }
+    var description by remember { mutableStateOf(previousRequest?.description ?: "") }
     var photoUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -203,21 +216,38 @@ private fun SubmitReturnRequestForm(
         if (pickedMeetupLocation != null) pendingMeetupPick = pickedMeetupLocation
     }
 
-    val pickPhotos = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(MAX_RETURN_REQUEST_PHOTOS)
-    ) { uris -> if (uris.isNotEmpty()) photoUris = uris }
-
     // Shipping fee is never refundable — it's a real courier cost already spent — so the eligible
     // refund cap excludes it, unlike the platform fee which the buyer can still get back.
     val shippingFee = order.checkout.shippingFee
     val refundCap = order.price - shippingFee
     val refundAmount = refundAmountText.toDoubleOrNull()
     val canSubmit = when (requestType) {
-        ReturnRequestType.RETURN -> returnMethod != ReturnMethod.MEETUP || selectedMeetup != null
+        ReturnRequestType.RETURN -> selectedMethods.isNotEmpty() && (ReturnMethod.MEETUP !in selectedMethods || selectedMeetups.isNotEmpty())
         ReturnRequestType.REFUND -> refundAmount != null && refundAmount > 0 && refundAmount <= refundCap
     } && (reason != "Other" || reasonOther.isNotBlank())
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        if (previousRequest?.status == ReturnRequestStatus.REJECTED) {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        "Your previous request was declined",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    previousRequest.rejectionReason?.takeIf { it.isNotBlank() }?.let {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         Text("Reason", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(6.dp))
         returnRequestReasons.forEach { option ->
@@ -252,29 +282,41 @@ private fun SubmitReturnRequestForm(
 
         if (requestType == ReturnRequestType.RETURN) {
             Spacer(modifier = Modifier.height(12.dp))
-            Text("How will you send it back?", style = MaterialTheme.typography.labelLarge)
+            Text("How could you send it back? Select every way that works for you.", style = MaterialTheme.typography.labelLarge)
             Spacer(modifier = Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SelectableCard(
                     title = "Meet-up",
-                    isSelected = returnMethod == ReturnMethod.MEETUP,
-                    onClick = { returnMethod = ReturnMethod.MEETUP }
+                    isSelected = ReturnMethod.MEETUP in selectedMethods,
+                    onClick = {
+                        selectedMethods = if (ReturnMethod.MEETUP in selectedMethods) selectedMethods - ReturnMethod.MEETUP else selectedMethods + ReturnMethod.MEETUP
+                    },
+                    multiSelect = true
                 )
                 SelectableCard(
                     title = "Shipping",
-                    isSelected = returnMethod == ReturnMethod.SHIPPING,
-                    onClick = { returnMethod = ReturnMethod.SHIPPING }
+                    isSelected = ReturnMethod.SHIPPING in selectedMethods,
+                    onClick = {
+                        selectedMethods = if (ReturnMethod.SHIPPING in selectedMethods) selectedMethods - ReturnMethod.SHIPPING else selectedMethods + ReturnMethod.SHIPPING
+                    },
+                    multiSelect = true
                 )
             }
-            if (returnMethod == ReturnMethod.MEETUP) {
+            if (ReturnMethod.MEETUP in selectedMethods) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("Pick a meet-up location", style = MaterialTheme.typography.labelLarge)
+                Text("Which meet-up spots would work? Select at least one.", style = MaterialTheme.typography.labelLarge)
                 Spacer(modifier = Modifier.height(6.dp))
                 if (availableMeetups.isNotEmpty()) {
-                    MeetupLocationCards(
+                    MeetupLocationCheckboxCards(
                         locations = availableMeetups,
-                        selected = selectedMeetup,
-                        onSelect = { selectedMeetup = it },
+                        selected = selectedMeetups,
+                        onToggle = { loc ->
+                            selectedMeetups = if (selectedMeetups.any { it.id == loc.id }) {
+                                selectedMeetups.filterNot { it.id == loc.id }.toSet()
+                            } else {
+                                selectedMeetups + loc
+                            }
+                        },
                         onOpenMaps = { openInGoogleMaps(context, it) }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -336,16 +378,15 @@ private fun SubmitReturnRequestForm(
                     contentScale = ContentScale.Crop
                 )
             }
-            item {
-                Box(
-                    modifier = Modifier.size(72.dp).clip(RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    IconButton(onClick = {
-                        pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) {
-                        Icon(Icons.Filled.AddAPhoto, contentDescription = "Add photo")
-                    }
+            if (photoUris.size < MAX_RETURN_REQUEST_PHOTOS) {
+                item {
+                    AddPhotoTile(
+                        maxSelectable = MAX_RETURN_REQUEST_PHOTOS,
+                        cameraSubDir = "return_request_photos",
+                        tileSize = 72.dp,
+                        onPhotosPicked = { uris -> photoUris = uris },
+                        onPhotoCaptured = { uri -> photoUris = photoUris + uri }
+                    )
                 }
             }
         }
@@ -370,10 +411,10 @@ private fun SubmitReturnRequestForm(
                         reasonCode = reason,
                         reasonOther = if (reason == "Other") reasonOther else "",
                         refundAmount = if (requestType == ReturnRequestType.REFUND) refundAmount else null,
-                        returnMethod = if (requestType == ReturnRequestType.RETURN) returnMethod else null,
+                        returnMethods = if (requestType == ReturnRequestType.RETURN) selectedMethods else emptySet(),
                         description = description,
                         photoUrls = photoUrls,
-                        meetupLocation = if (requestType == ReturnRequestType.RETURN && returnMethod == ReturnMethod.MEETUP) selectedMeetup else null
+                        meetupLocations = if (requestType == ReturnRequestType.RETURN && ReturnMethod.MEETUP in selectedMethods) selectedMeetups.toList() else emptyList()
                     )
                     busy = false
                     if (result.isSuccess) onSubmitted() else errorMessage = "Couldn't submit your request. Please try again."
@@ -392,8 +433,8 @@ private fun SubmitReturnRequestForm(
             onConfirm = { name ->
                 val newLocation = MeetupLocation(UUID.randomUUID().toString(), name, pick.address, pick.latitude, pick.longitude)
                 availableMeetups = availableMeetups + newLocation
-                selectedMeetup = newLocation
-                returnMethod = ReturnMethod.MEETUP
+                selectedMeetups = selectedMeetups + newLocation
+                selectedMethods = selectedMethods + ReturnMethod.MEETUP
                 pendingMeetupPick = null
             }
         )
@@ -403,7 +444,6 @@ private fun SubmitReturnRequestForm(
 @Composable
 private fun DecideReturnRequestForm(
     request: ReturnRequest,
-    product: Product?,
     pickedAddressId: String?,
     onChangeAddress: () -> Unit,
     onDecided: () -> Unit
@@ -412,16 +452,12 @@ private fun DecideReturnRequestForm(
     var rejectionReason by remember { mutableStateOf("") }
     var showRejectField by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    // The product's own declared spots plus the buyer's suggested one (which may not be among
-    // them, since submitting a return no longer requires matching the listing's own list) — deduped
-    // so a buyer-suggested spot that does happen to match one already declared isn't shown twice.
-    val meetupLocations = remember(product, request.meetupLocation) {
-        val declared = product?.meetupLocations.orEmpty()
-        val suggested = request.meetupLocation
-        if (suggested != null && declared.none { it.id == suggested.id }) declared + suggested else declared
-    }
     var finalMethod by remember { mutableStateOf<ReturnMethod?>(null) }
     var selectedMeetup by remember { mutableStateOf<MeetupLocation?>(null) }
+    var previewPhotoUrl by remember { mutableStateOf<String?>(null) }
+    var pendingRejectStart by remember { mutableStateOf(false) }
+    var pendingDeclineConfirm by remember { mutableStateOf(false) }
+    var pendingAcceptConfirm by remember { mutableStateOf(false) }
     val pickedAddress = pickedAddressId?.let { id -> AddressRepository.addresses.find { it.id == id } }
 
     val needsLogistics = request.requestType == ReturnRequestType.RETURN
@@ -432,35 +468,36 @@ private fun DecideReturnRequestForm(
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Card(shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(1.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(1.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Request type: ${if (request.requestType == ReturnRequestType.RETURN) "Return item" else "Refund only"}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Request type: ${if (request.requestType == ReturnRequestType.RETURN) "Return item" else "Refund only"}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Reason: ${request.reasonCode}${if (request.reasonCode == "Other") " — ${request.reasonOtherText}" else ""}", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Reason: ${request.reasonCode}${if (request.reasonCode == "Other") " — ${request.reasonOtherText}" else ""}",
+                    style = MaterialTheme.typography.bodyLarge
+                )
                 request.refundAmount?.let {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Requested refund: ${formatMoney(it)}", style = MaterialTheme.typography.bodyMedium)
-                }
-                request.returnMethod?.let {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Buyer's preference: ${if (it == ReturnMethod.MEETUP) "Meet-up" else "Shipping"}", style = MaterialTheme.typography.bodyMedium)
-                }
-                request.meetupLocation?.let {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("Buyer suggested: ${it.name}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Requested refund: ${formatMoney(it)}", style = MaterialTheme.typography.bodyLarge)
                 }
                 if (request.description.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(request.description, style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Description", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(request.description, style = MaterialTheme.typography.bodyLarge)
                 }
                 if (request.photoUrls.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(request.photoUrls) { url ->
                             AsyncImage(
                                 model = url,
                                 contentDescription = null,
-                                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(10.dp)),
+                                modifier = Modifier.size(80.dp).clip(RoundedCornerShape(10.dp)).clickable { previewPhotoUrl = url },
                                 contentScale = ContentScale.Crop
                             )
                         }
@@ -472,29 +509,43 @@ private fun DecideReturnRequestForm(
         if (needsLogistics) {
             Spacer(modifier = Modifier.height(20.dp))
             Text("How will you receive it?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "The buyer can send it back by ${request.returnMethods.joinToString(" or ") { if (it == ReturnMethod.MEETUP) "meet-up" else "shipping" }} — pick the one you'd like.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SelectableCard(
-                    title = "Meet-up",
-                    isSelected = finalMethod == ReturnMethod.MEETUP,
-                    onClick = { finalMethod = ReturnMethod.MEETUP }
-                )
-                SelectableCard(
-                    title = "Shipping",
-                    isSelected = finalMethod == ReturnMethod.SHIPPING,
-                    onClick = { finalMethod = ReturnMethod.SHIPPING }
-                )
+                if (ReturnMethod.MEETUP in request.returnMethods) {
+                    SelectableCard(
+                        title = "Meet-up",
+                        isSelected = finalMethod == ReturnMethod.MEETUP,
+                        onClick = { finalMethod = ReturnMethod.MEETUP }
+                    )
+                }
+                if (ReturnMethod.SHIPPING in request.returnMethods) {
+                    SelectableCard(
+                        title = "Shipping",
+                        isSelected = finalMethod == ReturnMethod.SHIPPING,
+                        onClick = { finalMethod = ReturnMethod.SHIPPING }
+                    )
+                }
             }
             if (finalMethod == ReturnMethod.MEETUP) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Pick a meet-up location", style = MaterialTheme.typography.labelLarge)
+                Spacer(modifier = Modifier.height(6.dp))
                 MeetupLocationCards(
-                    locations = meetupLocations,
+                    locations = request.meetupLocations,
                     selected = selectedMeetup,
                     onSelect = { selectedMeetup = it },
                     onOpenMaps = {}
                 )
             } else if (finalMethod == ReturnMethod.SHIPPING) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Return address", style = MaterialTheme.typography.labelLarge)
+                Spacer(modifier = Modifier.height(6.dp))
                 ReturnAddressCard(address = pickedAddress, onChangeClick = onChangeAddress)
             }
         }
@@ -511,43 +562,99 @@ private fun DecideReturnRequestForm(
             Button(
                 enabled = rejectionReason.isNotBlank() && !busy,
                 modifier = Modifier.fillMaxWidth(),
-                onClick = {
-                    busy = true
-                    scope.launch {
-                        ReturnRequestRepository.decide(request.id, accept = false, rejectionReason = rejectionReason)
-                        busy = false
-                        onDecided()
-                    }
-                }
+                onClick = { pendingDeclineConfirm = true }
             ) { Text("Confirm Decline") }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
-                    onClick = { showRejectField = true }
+                    onClick = { pendingRejectStart = true }
                 ) { Text("Reject") }
                 Button(
                     enabled = !busy && canAccept,
                     modifier = Modifier.weight(1f),
-                    onClick = {
-                        busy = true
-                        scope.launch {
-                            ReturnRequestRepository.decide(
-                                requestId = request.id,
-                                accept = true,
-                                rejectionReason = null,
-                                finalReturnMethod = finalMethod,
-                                finalMeetupLocation = if (finalMethod == ReturnMethod.MEETUP) selectedMeetup else null,
-                                finalReturnAddress = if (finalMethod == ReturnMethod.SHIPPING) pickedAddress else null
-                            )
-                            busy = false
-                            onDecided()
-                        }
-                    }
+                    onClick = { pendingAcceptConfirm = true }
                 ) { Text("Accept") }
             }
         }
+    }
+
+    previewPhotoUrl?.let { url ->
+        FullScreenImageViewer(imageUrl = url, onDismiss = { previewPhotoUrl = null })
+    }
+
+    if (pendingRejectStart) {
+        AlertDialog(
+            onDismissRequest = { pendingRejectStart = false },
+            title = { Text("Reject this request?") },
+            text = { Text("You'll be asked to give the buyer a reason before it's declined.") },
+            confirmButton = {
+                TextButton(onClick = { pendingRejectStart = false; showRejectField = true }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRejectStart = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (pendingDeclineConfirm) {
+        AlertDialog(
+            onDismissRequest = { pendingDeclineConfirm = false },
+            title = { Text("Reject and notify the buyer?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDeclineConfirm = false
+                    busy = true
+                    scope.launch {
+                        ReturnRequestRepository.decide(request.id, accept = false, rejectionReason = rejectionReason)
+                        busy = false
+                        onDecided()
+                    }
+                }) { Text("Reject") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeclineConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (pendingAcceptConfirm) {
+        AlertDialog(
+            onDismissRequest = { pendingAcceptConfirm = false },
+            title = { Text("Accept this request?") },
+            text = {
+                Text(
+                    if (request.requestType == ReturnRequestType.REFUND) {
+                        "${formatMoney(request.refundAmount ?: 0.0)} will be credited to the buyer's wallet."
+                    } else {
+                        "The buyer will send the item back to you by ${if (finalMethod == ReturnMethod.MEETUP) "meet-up" else "shipping"}."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAcceptConfirm = false
+                    busy = true
+                    scope.launch {
+                        ReturnRequestRepository.decide(
+                            requestId = request.id,
+                            accept = true,
+                            rejectionReason = null,
+                            finalReturnMethod = finalMethod,
+                            finalMeetupLocation = if (finalMethod == ReturnMethod.MEETUP) selectedMeetup else null,
+                            finalReturnAddress = if (finalMethod == ReturnMethod.SHIPPING) pickedAddress else null
+                        )
+                        busy = false
+                        onDecided()
+                    }
+                }) { Text("Accept") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAcceptConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

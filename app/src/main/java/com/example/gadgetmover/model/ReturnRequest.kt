@@ -31,9 +31,10 @@ data class ReturnRequest(
     val reasonCode: String,
     val reasonOtherText: String = "",
     val refundAmount: Double? = null,
-    val returnMethod: ReturnMethod? = null,
-    /** The buyer's suggested meet-up spot — context for the seller, not authoritative; the seller picks the final location when accepting. */
-    val meetupLocation: MeetupLocation? = null,
+    /** Every send-back method the buyer is personally OK with — the seller then picks exactly one final method from this set when accepting. */
+    val returnMethods: Set<ReturnMethod> = emptySet(),
+    /** The buyer's whole candidate set of acceptable meet-up spots (only meaningful when [ReturnMethod.MEETUP] is in [returnMethods]) — the seller picks exactly one final location from this set, not from the listing's own declared spots. */
+    val meetupLocations: List<MeetupLocation> = emptyList(),
     val description: String = "",
     val photoUrls: List<String> = emptyList(),
     val status: ReturnRequestStatus = ReturnRequestStatus.PENDING,

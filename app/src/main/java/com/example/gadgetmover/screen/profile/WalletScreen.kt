@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.WalletRepository
 import com.example.gadgetmover.model.WalletTransaction
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.model.WalletTransactionType
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.SuccessGreen
@@ -70,11 +71,14 @@ fun WalletScreen(
     onSuccessMessageShown: () -> Unit = {}
 ) {
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         WalletRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     // Add Funds / Withdraw navigate back here immediately on success (not blocked on a snackbar
@@ -193,6 +197,7 @@ fun WalletScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }

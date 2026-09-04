@@ -73,6 +73,7 @@ import com.example.gadgetmover.model.OrderStatus
 import com.example.gadgetmover.model.RentActivityTab
 import com.example.gadgetmover.model.RentalOrder
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ReviewDialog
 import com.example.gadgetmover.screen.components.ShipmentDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
@@ -147,6 +148,7 @@ fun MyActivitiesScreen(
     var selectedBuyTab by rememberSaveable { mutableStateOf(BuyActivityTab.ALL) }
     var selectedRentTab by rememberSaveable { mutableStateOf(RentActivityTab.ALL) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<Pair<Order, OrderAction.StatusChange>?>(null) }
     var pendingShipment by remember { mutableStateOf<Pair<Order, OrderAction.Ship>?>(null) }
     var pendingDelete by remember { mutableStateOf<Order?>(null) }
@@ -170,7 +172,11 @@ fun MyActivitiesScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) scope.launch { OrderRepository.refreshFromRemote() }
+            if (event == Lifecycle.Event.ON_RESUME) scope.launch {
+                isBackgroundLoading = true
+                OrderRepository.refreshFromRemote()
+                isBackgroundLoading = false
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -258,6 +264,7 @@ fun MyActivitiesScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 
@@ -395,6 +402,8 @@ private fun OrderCard(
     }
     val canReview = isBuyerSide && order.status == OrderStatus.TO_REVIEW
     val canRequestReturn = order is BuyOrder && isBuyerSide && order.status == OrderStatus.SHIPPED
+    val canReviewReturnRequest = order is BuyOrder && !isBuyerSide && order.status == OrderStatus.RETURN_REQUESTED
+    val canDelete = order.status == OrderStatus.COMPLETED || order.status == OrderStatus.CANCELLED
     // Not reflected in [OrderStatus] itself, so this needs its own lookup — starts true (hides
     // the button) so a not-yet-reviewed order doesn't flash a button that then disappears.
     var alreadyReviewed by remember(order.id) { mutableStateOf(true) }
@@ -447,18 +456,20 @@ private fun OrderCard(
                     Spacer(modifier = Modifier.height(4.dp))
                     StatusBadge(order.status)
                 }
-                IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = "Remove from history",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                if (canDelete) {
+                    IconButton(onClick = onDeleteClick, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Remove from history",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
             val actions = actionsFor(order)
             val showReviewButton = canReview && !alreadyReviewed
-            if (actions.isNotEmpty() || showReviewButton || canRequestReturn) {
+            if (actions.isNotEmpty() || showReviewButton || canRequestReturn || canReviewReturnRequest) {
                 Spacer(modifier = Modifier.height(10.dp))
                 // Stacked full-width, not side-by-side — splitting a row in half leaves too little
                 // width for longer labels ("Confirm Return Received", "Request Return/Refund") once
@@ -480,6 +491,11 @@ private fun OrderCard(
                     if (canRequestReturn) {
                         OutlinedButton(onClick = onRequestReturn, modifier = Modifier.fillMaxWidth()) {
                             Text("Request Return/Refund", textAlign = TextAlign.Center)
+                        }
+                    }
+                    if (canReviewReturnRequest) {
+                        Button(onClick = onRequestReturn, modifier = Modifier.fillMaxWidth()) {
+                            Text("Review Request", textAlign = TextAlign.Center)
                         }
                     }
                     if (showReviewButton) {

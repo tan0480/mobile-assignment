@@ -239,6 +239,17 @@ alter table public.orders add column if not exists hidden_by_seller boolean not 
 -- pg_cron sweep to auto-complete an order whose 30-day review window has lapsed.
 alter table public.orders add column if not exists to_review_at timestamptz;
 
+-- The transaction's handover milestones, shown on Order Details — the outbound leg (seller/owner
+-- ships -> buyer/renter confirms receipt) for every order, plus the return leg (renter ships back
+-- -> owner confirms receipt for RENT; buyer ships back -> seller confirms receipt for a BUY
+-- return/refund) for whichever orders actually go through one. Stamped by
+-- mark_order_shipped()/advance_order_status() below, each only for its own leg's specific
+-- transitions so one leg's call never overwrites the other's timestamps.
+alter table public.orders add column if not exists shipped_at timestamptz;
+alter table public.orders add column if not exists received_at timestamptz;
+alter table public.orders add column if not exists return_shipped_at timestamptz;
+alter table public.orders add column if not exists return_received_at timestamptz;
+
 -- A seller must never end up as their own buyer. The client already hides Buy Now/Rent for a
 -- listing's own owner (Product Detail's isOwner check, and the chat Special Price offer card),
 -- but that's UI-only — this is the actual backstop, enforced at the database level regardless of
@@ -320,7 +331,21 @@ begin
 
     update public.orders set
         status = p_new_status,
-        to_review_at = case when p_new_status = 'TO_REVIEW' then now() else to_review_at end
+        to_review_at = case when p_new_status = 'TO_REVIEW' then now() else to_review_at end,
+        -- TO_REVIEW means two different things depending on order_type (BUY: the buyer just
+        -- confirmed receiving the outbound shipment; RENT: the owner just confirmed the returned
+        -- item, via RETURN_PENDING — RENT's own outbound-receive event is RENTING, not TO_REVIEW),
+        -- so order_type disambiguates which of received_at/return_received_at this transition is.
+        received_at = case
+            when v_order.order_type = 'RENT' and p_new_status = 'RENTING' then now()
+            when v_order.order_type = 'BUY' and p_new_status = 'TO_REVIEW' then now()
+            else received_at
+        end,
+        return_received_at = case
+            when v_order.order_type = 'BUY' and p_new_status = 'REFUNDED' then now()
+            when v_order.order_type = 'RENT' and p_new_status = 'TO_REVIEW' then now()
+            else return_received_at
+        end
         where id = p_order_id
         returning * into v_order;
 
@@ -391,7 +416,9 @@ begin
                 || jsonb_build_object('outboundCourier', p_courier, 'outboundTrackingNumber', p_tracking_number)
             else checkout_details
                 || jsonb_build_object('returnCourier', p_courier, 'returnTrackingNumber', p_tracking_number)
-        end
+        end,
+        shipped_at = case when v_leg_key = 'outbound' then now() else shipped_at end,
+        return_shipped_at = case when v_leg_key = 'return' then now() else return_shipped_at end
         where id = p_order_id
         returning * into v_order;
 
@@ -471,6 +498,10 @@ begin
     select * into v_order from public.orders where id = p_order_id;
     if not found then
         raise exception 'Order not found';
+    end if;
+
+    if v_order.status not in ('COMPLETED', 'CANCELLED') then
+        raise exception 'Only completed or cancelled orders can be removed';
     end if;
 
     if auth.uid() = v_order.buyer_id then
@@ -1160,7 +1191,6 @@ create table if not exists public.return_requests (
     reason_code text not null,
     reason_other_text text not null default '',
     refund_amount numeric,
-    return_method text,
     description text not null default '',
     photo_urls text[] not null default '{}',
     status text not null default 'PENDING' check (status in ('PENDING', 'ACCEPTED', 'REJECTED')),
@@ -1169,9 +1199,13 @@ create table if not exists public.return_requests (
     decided_at timestamptz
 );
 
--- The buyer's suggested meet-up spot, shown to the seller as context on the decide screen — not
--- authoritative; decide_return_request() below lets the seller pick the actual final location.
-alter table public.return_requests add column if not exists meetup_location jsonb;
+-- Every send-back method, and (when meet-up is among them) every meet-up spot, the buyer would
+-- personally accept — the seller then picks exactly one final method/location from these sets in
+-- decide_return_request() below. Replaces the earlier single-value return_method/meetup_location
+-- columns; see the one-time manual migration note in this project's session notes for dropping
+-- those two columns before re-running this file on a database that still has them.
+alter table public.return_requests add column if not exists return_methods text[] not null default '{}';
+alter table public.return_requests add column if not exists meetup_locations jsonb not null default '[]'::jsonb;
 
 alter table public.return_requests enable row level security;
 
@@ -1184,16 +1218,17 @@ create policy "order parties can read return requests"
     ));
 
 drop function if exists public.submit_return_request(uuid, text, text, text, numeric, text, text, text[]);
+drop function if exists public.submit_return_request(uuid, text, text, text, numeric, text, text, text[], jsonb);
 create or replace function public.submit_return_request(
     p_order_id uuid,
     p_type text,
     p_reason_code text,
     p_reason_other text,
     p_refund_amount numeric,
-    p_return_method text,
+    p_return_methods text[],
     p_description text,
     p_photo_urls text[],
-    p_meetup_location jsonb
+    p_meetup_locations jsonb
 )
 returns public.return_requests
 language plpgsql
@@ -1233,22 +1268,32 @@ begin
         raise exception 'Refund amount must be between 0 and the order total minus shipping';
     end if;
 
-    -- No longer required to match one of the product's own declared meet-up spots — the buyer can
-    -- suggest a fresh location just for this return, since it may not match where they'd meet for
-    -- the original handover at all.
-    if p_type = 'RETURN' and p_return_method = 'MEETUP' and (p_meetup_location is null or coalesce(p_meetup_location->>'name', '') = '') then
-        raise exception 'Please pick a meet-up location';
+    -- The buyer checks off every method they'd personally accept (not just one) — the seller then
+    -- picks exactly one final method from this set in decide_return_request(). Locations are the
+    -- buyer's own freely-added candidates, not required to match the listing's own declared spots,
+    -- since a convenient return spot may differ entirely from the original handover spot.
+    if p_type = 'RETURN' and (
+        p_return_methods is null or coalesce(array_length(p_return_methods, 1), 0) = 0
+        or not (p_return_methods <@ array['MEETUP', 'SHIPPING'])
+    ) then
+        raise exception 'Please pick at least one way you can send it back';
+    end if;
+    if p_type = 'RETURN' and 'MEETUP' = any(p_return_methods) and (
+        p_meetup_locations is null or jsonb_typeof(p_meetup_locations) != 'array' or jsonb_array_length(p_meetup_locations) = 0
+        or exists (select 1 from jsonb_array_elements(p_meetup_locations) loc where coalesce(loc->>'name', '') = '')
+    ) then
+        raise exception 'Please pick at least one meet-up location';
     end if;
 
     insert into public.return_requests (
         order_id, requester_id, attempt_number, request_type, reason_code, reason_other_text,
-        refund_amount, return_method, description, photo_urls, meetup_location
+        refund_amount, return_methods, description, photo_urls, meetup_locations
     ) values (
         p_order_id, auth.uid(), v_attempt_count + 1, p_type, p_reason_code, coalesce(p_reason_other, ''),
         case when p_type = 'REFUND' then p_refund_amount else null end,
-        case when p_type = 'RETURN' then p_return_method else null end,
+        case when p_type = 'RETURN' then p_return_methods else '{}' end,
         coalesce(p_description, ''), coalesce(p_photo_urls, '{}'),
-        case when p_type = 'RETURN' and p_return_method = 'MEETUP' then p_meetup_location else null end
+        case when p_type = 'RETURN' and 'MEETUP' = any(p_return_methods) then p_meetup_locations else '[]'::jsonb end
     ) returning * into v_request;
 
     update public.orders set status = 'RETURN_REQUESTED' where id = p_order_id;
@@ -1257,7 +1302,7 @@ begin
 end;
 $$;
 
-grant execute on function public.submit_return_request(uuid, text, text, text, numeric, text, text, text[], jsonb) to authenticated;
+grant execute on function public.submit_return_request(uuid, text, text, text, numeric, text[], text, text[], jsonb) to authenticated;
 
 drop function if exists public.decide_return_request(uuid, boolean, text);
 create or replace function public.decide_return_request(
@@ -1309,21 +1354,22 @@ begin
         update public.profiles set wallet_balance = wallet_balance + v_request.refund_amount where id = v_request.requester_id;
         update public.orders set status = 'REFUNDED' where id = v_request.order_id;
     else
-        -- RETURN: the seller picks the actual return logistics here (independent of whatever the
-        -- buyer suggested at submission) — mirrors how a rental's own return leg is always known
-        -- up front. No payout yet — the buyer still has to ship/hand the item back, and the
-        -- release_order_payout() trigger only refunds once the seller confirms it arrived
-        -- (RETURN_AWAITING_RECEIPT -> REFUNDED, driven by mark_order_shipped + advance_order_status).
-        if p_final_return_method not in ('MEETUP', 'SHIPPING') then
-            raise exception 'Please choose how you want the item returned to you';
+        -- RETURN: the seller picks the actual return logistics here, but only from among what the
+        -- buyer said they'd personally accept at submission (v_request.return_methods/meetup_locations)
+        -- — mirrors how a rental's own return leg is always known up front. No payout yet — the
+        -- buyer still has to ship/hand the item back, and the release_order_payout() trigger only
+        -- refunds once the seller confirms it arrived (RETURN_AWAITING_RECEIPT -> REFUNDED, driven
+        -- by mark_order_shipped + advance_order_status).
+        if p_final_return_method is null or not (p_final_return_method = any(v_request.return_methods)) then
+            raise exception 'Please choose one of the ways the buyer said they can send it back';
         end if;
 
-        -- No longer required to match one of the product's own declared meet-up spots — the
-        -- seller may pick a fresh location just for this return (see submit_return_request's
-        -- own matching relaxation for the buyer's suggestion).
         if p_final_return_method = 'MEETUP' then
-            if p_final_meetup_location is null or coalesce(p_final_meetup_location->>'name', '') = '' then
-                raise exception 'Please pick a meet-up location';
+            if p_final_meetup_location is null or not exists (
+                select 1 from jsonb_array_elements(v_request.meetup_locations) loc
+                where loc->>'id' = p_final_meetup_location->>'id'
+            ) then
+                raise exception 'Please pick one of the buyer''s suggested meet-up locations';
             end if;
             update public.orders set
                 status = 'RETURN_AWAITING_SHIP',

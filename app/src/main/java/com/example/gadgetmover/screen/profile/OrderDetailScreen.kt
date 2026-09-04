@@ -1,6 +1,7 @@
 package com.example.gadgetmover.screen.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,7 +46,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -58,10 +63,14 @@ import com.example.gadgetmover.screen.components.ReviewDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.ui.theme.WarningAmber
+import com.example.gadgetmover.util.Courier
 import com.example.gadgetmover.util.estimatedPayout
 import com.example.gadgetmover.util.formatDisplayDate
 import com.example.gadgetmover.util.formatMoney
 import com.example.gadgetmover.util.openInGoogleMaps
+import com.example.gadgetmover.util.openUrl
+import com.example.gadgetmover.util.tracksAutomatically
+import com.example.gadgetmover.util.trackingUrl
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -78,9 +87,35 @@ fun OrderDetailScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
     var alreadyReviewed by remember { mutableStateOf(true) }
+    // Tapping the tracking number only stages this — the actual copy+open happens once the user
+    // confirms in the AlertDialog below, since jumping straight to another app with no warning
+    // felt too abrupt.
+    var pendingTrackTap by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Most couriers' official tracking pages run their search through client-side JS rather than
+    // a plain URL parameter, so this always copies the number to the clipboard as a reliable
+    // fallback; only Courier.NINJA_VAN's tracking URL is confirmed to pre-fill it automatically.
+    fun performTrackTap(courierLabel: String, trackingNumber: String) {
+        clipboard.setText(AnnotatedString(trackingNumber))
+        val courier = Courier.entries.firstOrNull { it.label == courierLabel }
+        val url = courier?.trackingUrl(trackingNumber)
+        if (url != null) {
+            openUrl(context, url)
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    if (courier.tracksAutomatically()) "Opening $courierLabel tracking"
+                    else "Tracking number copied — paste it into $courierLabel's search"
+                )
+            }
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Tracking number copied") }
+        }
+    }
 
     val isBuyerSide = when (order) {
         is BuyOrder -> order.isPurchase
@@ -90,6 +125,7 @@ fun OrderDetailScreen(
     val canReview = order.status == OrderStatus.TO_REVIEW && isBuyerSide
     val canRequestReturn = order is BuyOrder && isBuyerSide && order.status == OrderStatus.SHIPPED
     val canReviewReturnRequest = order is BuyOrder && isSellerSide && order.status == OrderStatus.RETURN_REQUESTED
+    val canDelete = order.status == OrderStatus.COMPLETED || order.status == OrderStatus.CANCELLED
     val payoutPending = when (order) {
         is BuyOrder -> order.status == OrderStatus.SHIPPED
         is RentalOrder -> order.status in setOf(OrderStatus.RENTAL_SHIPPED, OrderStatus.RENTING, OrderStatus.RETURN_PENDING)
@@ -100,6 +136,7 @@ fun OrderDetailScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Order Details") },
@@ -109,8 +146,10 @@ fun OrderDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remove from history")
+                    if (canDelete) {
+                        IconButton(onClick = { showDeleteDialog = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Remove from history")
+                        }
                     }
                 }
             )
@@ -134,6 +173,10 @@ fun OrderDetailScreen(
                     InfoRow("Payment", order.paymentStatus.name.lowercase().replaceFirstChar { it.uppercase() })
                     InfoRow("With", order.counterpartyName)
                     InfoRow("Order Date", formatDisplayDate(order.createdDate))
+                    order.shippedAt?.let { InfoRow("Shipped", formatDisplayDate(it)) }
+                    order.receivedAt?.let { InfoRow("Received", formatDisplayDate(it)) }
+                    order.returnShippedAt?.let { InfoRow("Return Shipped", formatDisplayDate(it)) }
+                    order.returnReceivedAt?.let { InfoRow("Return Received", formatDisplayDate(it)) }
                     if (order is RentalOrder) {
                         InfoRow("Rental Period", "${formatDate(order.startDateMillis)} – ${formatDate(order.endDateMillis)}")
                         InfoRow("Duration", "${order.days} day${if (order.days == 1) "" else "s"}")
@@ -154,7 +197,8 @@ fun OrderDetailScreen(
                         fullAddress = order.checkout.shippingFullAddress,
                         courier = order.checkout.outboundCourier,
                         trackingNumber = order.checkout.outboundTrackingNumber,
-                        onOpenMaps = { openInGoogleMaps(context, it) }
+                        onOpenMaps = { openInGoogleMaps(context, it) },
+                        onTrackTap = { courierLabel, trackingNumber -> pendingTrackTap = courierLabel to trackingNumber }
                     )
                     val returningMethod = order.checkout.returningMethod
                     if (returningMethod != null) {
@@ -170,7 +214,8 @@ fun OrderDetailScreen(
                             fullAddress = order.checkout.returnFullAddress,
                             courier = order.checkout.returnCourier,
                             trackingNumber = order.checkout.returnTrackingNumber,
-                            onOpenMaps = { openInGoogleMaps(context, it) }
+                            onOpenMaps = { openInGoogleMaps(context, it) },
+                            onTrackTap = { courierLabel, trackingNumber -> pendingTrackTap = courierLabel to trackingNumber }
                         )
                     }
                 }
@@ -252,6 +297,33 @@ fun OrderDetailScreen(
             }
         )
     }
+
+    pendingTrackTap?.let { (courierLabel, trackingNumber) ->
+        val courier = Courier.entries.firstOrNull { it.label == courierLabel }
+        val canAutoFill = courier?.tracksAutomatically() == true
+        AlertDialog(
+            onDismissRequest = { pendingTrackTap = null },
+            title = { Text("Track this shipment?") },
+            text = {
+                Text(
+                    if (canAutoFill) {
+                        "This copies $trackingNumber to your clipboard and opens $courierLabel's tracking page with it already filled in."
+                    } else {
+                        "This copies $trackingNumber to your clipboard and opens $courierLabel's tracking page — paste it into their search box to check the status."
+                    }
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    performTrackTap(courierLabel, trackingNumber)
+                    pendingTrackTap = null
+                }) { Text("Open") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingTrackTap = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -306,7 +378,8 @@ private fun FulfillmentDetail(
     fullAddress: String?,
     courier: String? = null,
     trackingNumber: String? = null,
-    onOpenMaps: (com.example.gadgetmover.model.MeetupLocation) -> Unit
+    onOpenMaps: (com.example.gadgetmover.model.MeetupLocation) -> Unit,
+    onTrackTap: (courierLabel: String, trackingNumber: String) -> Unit = { _, _ -> }
 ) {
     Column {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -335,7 +408,14 @@ private fun FulfillmentDetail(
                 }
                 if (courier != null && trackingNumber != null) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("$courier · $trackingNumber", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "$courier · $trackingNumber",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                        modifier = Modifier.clickable { onTrackTap(courier, trackingNumber) }
+                    )
                 }
             }
         }

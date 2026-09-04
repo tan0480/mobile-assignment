@@ -133,6 +133,14 @@ sealed class Order {
     abstract val counterpartyName: String
     abstract val status: OrderStatus
     abstract val createdDate: String
+    /** When the seller/owner marked the outbound leg shipped — null until then, and never touched by the return leg. */
+    abstract val shippedAt: String?
+    /** When the buyer/renter confirmed they received the outbound shipment — null until then. */
+    abstract val receivedAt: String?
+    /** When the renter/buyer shipped the return leg — null until then, and null forever for an order with no return leg. */
+    abstract val returnShippedAt: String?
+    /** When the owner/seller confirmed receiving the returned item — null until then. */
+    abstract val returnReceivedAt: String?
     /** The Stripe PaymentIntent id backing this order's payment — null only for pre-checkout-era test data. */
     abstract val paymentId: String?
     abstract val paymentStatus: PaymentRecordStatus
@@ -149,6 +157,10 @@ data class BuyOrder(
     override val counterpartyName: String,
     override val status: OrderStatus,
     override val createdDate: String,
+    override val shippedAt: String? = null,
+    override val receivedAt: String? = null,
+    override val returnShippedAt: String? = null,
+    override val returnReceivedAt: String? = null,
     override val paymentId: String? = null,
     override val paymentStatus: PaymentRecordStatus = PaymentRecordStatus.PENDING,
     override val checkout: CheckoutDetails = CheckoutDetails(),
@@ -166,6 +178,10 @@ data class RentalOrder(
     override val counterpartyName: String,
     override val status: OrderStatus,
     override val createdDate: String,
+    override val shippedAt: String? = null,
+    override val receivedAt: String? = null,
+    override val returnShippedAt: String? = null,
+    override val returnReceivedAt: String? = null,
     override val paymentId: String? = null,
     override val paymentStatus: PaymentRecordStatus = PaymentRecordStatus.PENDING,
     override val checkout: CheckoutDetails = CheckoutDetails(),
