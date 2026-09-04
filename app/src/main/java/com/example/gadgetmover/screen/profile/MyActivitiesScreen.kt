@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -61,6 +63,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.OrderRepository
+import com.example.gadgetmover.data.ReviewRepository
 import com.example.gadgetmover.data.WalletRepository
 import com.example.gadgetmover.model.BuyActivityTab
 import com.example.gadgetmover.model.BuyOrder
@@ -70,6 +73,7 @@ import com.example.gadgetmover.model.OrderStatus
 import com.example.gadgetmover.model.RentActivityTab
 import com.example.gadgetmover.model.RentalOrder
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.ReviewDialog
 import com.example.gadgetmover.screen.components.ShipmentDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
@@ -87,7 +91,7 @@ private sealed class OrderAction(val label: String, val destructive: Boolean = f
 }
 
 /** Whether releasing/crediting funds happens on this transition — the caller must refresh [WalletRepository] afterward if so. */
-private fun OrderStatus.releasesPayout(): Boolean = this == OrderStatus.TO_REVIEW || this == OrderStatus.REFUNDED
+private fun OrderStatus.releasesPayout(): Boolean = this == OrderStatus.TO_REVIEW || this == OrderStatus.REFUNDED || this == OrderStatus.CANCELLED
 
 private fun actionsFor(order: Order): List<OrderAction> {
     val isBuyerSide = when (order) {
@@ -101,7 +105,7 @@ private fun actionsFor(order: Order): List<OrderAction> {
         is BuyOrder -> {
             if (isSellerSide && status == OrderStatus.PAID) actions += OrderAction.Ship("Mark as Shipped", order.checkout.receivingMethod)
             if (isBuyerSide && status == OrderStatus.SHIPPED) actions += OrderAction.StatusChange("Confirm Received", OrderStatus.TO_REVIEW)
-            if ((isBuyerSide || isSellerSide) && (status == OrderStatus.PAID || status == OrderStatus.SHIPPED)) {
+            if ((isBuyerSide || isSellerSide) && status == OrderStatus.PAID) {
                 actions += OrderAction.StatusChange("Cancel Order", OrderStatus.CANCELLED, destructive = true)
             }
             if (isBuyerSide && status == OrderStatus.RETURN_AWAITING_SHIP) {
@@ -114,7 +118,7 @@ private fun actionsFor(order: Order): List<OrderAction> {
         is RentalOrder -> {
             if (isSellerSide && status == OrderStatus.PAID) actions += OrderAction.Ship("Mark as Shipped", order.checkout.receivingMethod)
             if (isBuyerSide && status == OrderStatus.RENTAL_SHIPPED) actions += OrderAction.StatusChange("Confirm Received", OrderStatus.RENTING)
-            if ((isBuyerSide || isSellerSide) && (status == OrderStatus.PAID || status == OrderStatus.RENTAL_SHIPPED)) {
+            if ((isBuyerSide || isSellerSide) && status == OrderStatus.PAID) {
                 actions += OrderAction.StatusChange("Cancel Order", OrderStatus.CANCELLED, destructive = true)
             }
             if (isBuyerSide && status == OrderStatus.RENTING) {
@@ -130,7 +134,12 @@ private fun actionsFor(order: Order): List<OrderAction> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MyActivitiesScreen(onBackClick: () -> Unit, onOrderClick: (Order) -> Unit, initialTab: Int = 0) {
+fun MyActivitiesScreen(
+    onBackClick: () -> Unit,
+    onOrderClick: (Order) -> Unit,
+    onRequestReturnClick: (Order) -> Unit = {},
+    initialTab: Int = 0
+) {
     // rememberSaveable (not remember) so the tab/filter survive a round trip into Order Details
     // and back — this composable is fully disposed while that screen is on top, so plain
     // `remember` would reset to [initialTab] every time regardless of what was selected before.
@@ -141,6 +150,7 @@ fun MyActivitiesScreen(onBackClick: () -> Unit, onOrderClick: (Order) -> Unit, i
     var pendingAction by remember { mutableStateOf<Pair<Order, OrderAction.StatusChange>?>(null) }
     var pendingShipment by remember { mutableStateOf<Pair<Order, OrderAction.Ship>?>(null) }
     var pendingDelete by remember { mutableStateOf<Order?>(null) }
+    var pendingReview by remember { mutableStateOf<Order?>(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -240,7 +250,9 @@ fun MyActivitiesScreen(onBackClick: () -> Unit, onOrderClick: (Order) -> Unit, i
                                 }
                             },
                             onClick = { onOrderClick(order) },
-                            onDeleteClick = { pendingDelete = order }
+                            onDeleteClick = { pendingDelete = order },
+                            onLeaveReview = { pendingReview = order },
+                            onRequestReturn = { onRequestReturnClick(order) }
                         )
                     }
                 }
@@ -255,8 +267,17 @@ fun MyActivitiesScreen(onBackClick: () -> Unit, onOrderClick: (Order) -> Unit, i
             title = { Text(action.label) },
             text = {
                 Text(
-                    if (action.destructive) "This will cancel the order and cannot be undone."
-                    else "Mark this order as \"${action.newStatus.label}\"?"
+                    if (action.destructive) {
+                        val total = when (order) {
+                            is BuyOrder -> order.price
+                            is RentalOrder -> order.totalAmount
+                        }
+                        val shippingFee = order.checkout.shippingFee
+                        val refundAmount = total - shippingFee
+                        "This will cancel the order and refund ${formatMoney(refundAmount)} to your wallet" +
+                            (if (shippingFee > 0) " (shipping fee is not refundable)" else "") +
+                            ". This cannot be undone."
+                    } else "Mark this order as \"${action.newStatus.label}\"?"
                 )
             },
             confirmButton = {
@@ -289,6 +310,23 @@ fun MyActivitiesScreen(onBackClick: () -> Unit, onOrderClick: (Order) -> Unit, i
                     val succeeded = OrderRepository.markShipped(order, courier, tracking)
                     pendingShipment = null
                     if (!succeeded) snackbarHostState.showSnackbar("Couldn't update this order. Please try again.")
+                }
+            }
+        )
+    }
+
+    pendingReview?.let { order ->
+        ReviewDialog(
+            onDismiss = { pendingReview = null },
+            onSubmit = { rating, comment ->
+                scope.launch {
+                    val succeeded = ReviewRepository.submitReview(order.id, rating, comment)
+                    pendingReview = null
+                    if (succeeded) {
+                        OrderRepository.refreshFromRemote()
+                    } else {
+                        snackbarHostState.showSnackbar("Couldn't submit your review. Please try again.")
+                    }
                 }
             }
         )
@@ -343,7 +381,27 @@ private fun StatusPillChip(label: String, selected: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun OrderCard(order: Order, onAction: (OrderAction) -> Unit, onClick: () -> Unit, onDeleteClick: () -> Unit) {
+private fun OrderCard(
+    order: Order,
+    onAction: (OrderAction) -> Unit,
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onLeaveReview: () -> Unit,
+    onRequestReturn: () -> Unit
+) {
+    val isBuyerSide = when (order) {
+        is BuyOrder -> order.isPurchase
+        is RentalOrder -> order.isRenter
+    }
+    val canReview = isBuyerSide && order.status == OrderStatus.TO_REVIEW
+    val canRequestReturn = order is BuyOrder && isBuyerSide && order.status == OrderStatus.SHIPPED
+    // Not reflected in [OrderStatus] itself, so this needs its own lookup — starts true (hides
+    // the button) so a not-yet-reviewed order doesn't flash a button that then disappears.
+    var alreadyReviewed by remember(order.id) { mutableStateOf(true) }
+    LaunchedEffect(order.id, canReview) {
+        if (canReview) alreadyReviewed = ReviewRepository.hasReviewed(order.id)
+    }
+
     Card(
         modifier = Modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
@@ -399,18 +457,38 @@ private fun OrderCard(order: Order, onAction: (OrderAction) -> Unit, onClick: ()
                 }
             }
             val actions = actionsFor(order)
-            if (actions.isNotEmpty()) {
+            val showReviewButton = canReview && !alreadyReviewed
+            if (actions.isNotEmpty() || showReviewButton || canRequestReturn) {
                 Spacer(modifier = Modifier.height(10.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Stacked full-width, not side-by-side — splitting a row in half leaves too little
+                // width for longer labels ("Confirm Return Received", "Request Return/Refund") once
+                // two actions land on the same order, forcing them to wrap onto a second line and
+                // making the button visually crowd the card's bottom edge. Full width fits every
+                // current label on one line regardless of how many actions an order has.
+                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     actions.forEach { action ->
                         if (action.destructive) {
-                            OutlinedButton(onClick = { onAction(action) }, modifier = Modifier.weight(1f)) {
-                                Text(action.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            OutlinedButton(onClick = { onAction(action) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(action.label, textAlign = TextAlign.Center)
                             }
                         } else {
-                            Button(onClick = { onAction(action) }, modifier = Modifier.weight(1f)) {
-                                Text(action.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Button(onClick = { onAction(action) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(action.label, textAlign = TextAlign.Center)
                             }
+                        }
+                    }
+                    if (canRequestReturn) {
+                        OutlinedButton(onClick = onRequestReturn, modifier = Modifier.fillMaxWidth()) {
+                            Text("Request Return/Refund", textAlign = TextAlign.Center)
+                        }
+                    }
+                    if (showReviewButton) {
+                        Button(
+                            onClick = onLeaveReview,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandOrange)
+                        ) {
+                            Text("Leave a Review", textAlign = TextAlign.Center)
                         }
                     }
                 }

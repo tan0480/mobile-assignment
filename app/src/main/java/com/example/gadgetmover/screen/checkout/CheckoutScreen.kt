@@ -1,7 +1,6 @@
 package com.example.gadgetmover.screen.checkout
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,7 +78,9 @@ import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.MeetupLocation
 import com.example.gadgetmover.model.Order
 import com.example.gadgetmover.model.Product
+import com.example.gadgetmover.screen.components.MeetupLocationCards
 import com.example.gadgetmover.screen.components.PasswordConfirmDialog
+import com.example.gadgetmover.screen.components.SelectableCard
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.util.formatMoney
 import com.example.gadgetmover.util.openInGoogleMaps
@@ -523,32 +524,6 @@ private fun AddressCard(address: Address?, onChangeClick: () -> Unit) {
 }
 
 @Composable
-private fun MeetupLocationCards(
-    locations: List<MeetupLocation>,
-    selected: MeetupLocation?,
-    onSelect: (MeetupLocation) -> Unit,
-    onOpenMaps: (MeetupLocation) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        locations.forEach { location ->
-            Card(shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(1.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { onSelect(location) }.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(selected = selected?.id == location.id, onClick = { onSelect(location) })
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(location.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        Text(location.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                    }
-                    TextButton(onClick = { onOpenMaps(location) }) { Text("Open in Maps") }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun PriceBreakdownCard(uiState: CheckoutUiState, transactionType: ListingType) {
     Card(shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(1.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -632,27 +607,6 @@ private fun PaymentMethodCards(selected: CheckoutPaymentMethod, onSelect: (Check
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun SelectableCard(title: String, subtitle: String? = null, trailing: String? = null, isSelected: Boolean, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(width = if (isSelected) 2.dp else 1.dp, color = if (isSelected) BrandOrange else MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        elevation = CardDefaults.cardElevation(0.dp)
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = isSelected, onClick = onClick)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (trailing != null) Text(trailing, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -55,12 +55,8 @@ fun ShipmentDialog(
     }
 
     var expanded by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
     var selectedCourier by remember { mutableStateOf<Courier?>(null) }
     var trackingNumber by remember { mutableStateOf("") }
-    val filteredCouriers = remember(query) {
-        Courier.entries.filter { it.label.contains(query, ignoreCase = true) }
-    }
     val trackingValid = selectedCourier?.let { it.validate(trackingNumber) } ?: false
 
     AlertDialog(
@@ -68,23 +64,28 @@ fun ShipmentDialog(
         title = { Text(title) },
         text = {
             Column {
+                // A plain tap-to-pick dropdown (readOnly field, no typed search) rather than an
+                // editable text field — with only 7 fixed couriers there's nothing worth typing
+                // to filter, and an editable OutlinedTextField inside ExposedDropdownMenuBox is
+                // unreliable about raising the IME on real devices, leaving the field impossible
+                // to type into on some phones.
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                     OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it; selectedCourier = null; expanded = true },
+                        value = selectedCourier?.label ?: "",
+                        onValueChange = {},
+                        readOnly = true,
                         label = { Text("Courier") },
-                        placeholder = { Text("Search courier...") },
+                        placeholder = { Text("Select courier") },
                         singleLine = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                         modifier = Modifier.menuAnchor()
                     )
-                    DropdownMenu(expanded = expanded && filteredCouriers.isNotEmpty(), onDismissRequest = { expanded = false }) {
-                        filteredCouriers.forEach { courier ->
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        Courier.entries.forEach { courier ->
                             DropdownMenuItem(
                                 text = { Text(courier.label) },
                                 onClick = {
                                     selectedCourier = courier
-                                    query = courier.label
                                     expanded = false
                                 }
                             )
@@ -99,8 +100,10 @@ fun ShipmentDialog(
                     singleLine = true,
                     isError = trackingNumber.isNotEmpty() && !trackingValid,
                     supportingText = {
-                        if (trackingNumber.isNotEmpty() && !trackingValid) {
-                            Text("Doesn't match ${selectedCourier?.label ?: "the selected courier"}'s tracking number format", color = MaterialTheme.colorScheme.error)
+                        when {
+                            trackingNumber.isNotEmpty() && !trackingValid ->
+                                Text("Doesn't match ${selectedCourier?.label ?: "the selected courier"}'s tracking number format", color = MaterialTheme.colorScheme.error)
+                            selectedCourier != null -> Text(selectedCourier!!.formatHint)
                         }
                     }
                 )

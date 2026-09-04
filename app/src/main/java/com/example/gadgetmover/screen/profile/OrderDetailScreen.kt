@@ -1,7 +1,6 @@
 package com.example.gadgetmover.screen.profile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,6 +54,7 @@ import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.Order
 import com.example.gadgetmover.model.OrderStatus
 import com.example.gadgetmover.model.RentalOrder
+import com.example.gadgetmover.screen.components.ReviewDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.ui.theme.WarningAmber
@@ -144,7 +143,7 @@ fun OrderDetailScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             SectionTitle("Fulfillment")
-            Card(shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(1.dp)) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(1.dp)) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     FulfillmentDetail(
                         label = "Receiving",
@@ -158,7 +157,7 @@ fun OrderDetailScreen(
                         onOpenMaps = { openInGoogleMaps(context, it) }
                     )
                     val returningMethod = order.checkout.returningMethod
-                    if (order is RentalOrder && returningMethod != null) {
+                    if (returningMethod != null) {
                         Spacer(modifier = Modifier.height(10.dp))
                         HorizontalDivider()
                         Spacer(modifier = Modifier.height(10.dp))
@@ -400,47 +399,6 @@ private fun InfoRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
-}
-
-@Composable
-private fun ReviewDialog(onDismiss: () -> Unit, onSubmit: (rating: Int, comment: String) -> Unit) {
-    var rating by remember { mutableStateOf(5) }
-    var comment by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Leave a Review") },
-        text = {
-            Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    (1..5).forEach { star ->
-                        Icon(
-                            Icons.Filled.Star,
-                            contentDescription = "$star star${if (star == 1) "" else "s"}",
-                            tint = if (star <= rating) BrandOrange else MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clickable { rating = star }
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = comment,
-                    onValueChange = { comment = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("How was your experience? (optional)") },
-                    minLines = 3
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSubmit(rating, comment) }) { Text("Submit") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
 }
 
 private fun formatDate(millis: Long): String = SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(millis))

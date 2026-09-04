@@ -141,23 +141,31 @@ fun WalletScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Tighter contentPadding than the M3 default (24.dp horizontal) — with an icon
+                    // plus a two-word label sharing half the row, the default padding left too
+                    // little width for "Add funds" and it wrapped onto two lines at larger system
+                    // font scales, while the shorter one-word "Withdraw" didn't — an uneven,
+                    // broken-looking pair. maxLines = 1 backstops this so it can never silently
+                    // wrap again; the extra padding room means it shouldn't need to clip either.
                     Button(
                         onClick = onAddFundsClick,
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = BrandBlueDark)
                     ) {
                         Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp)) // TODO: swap with custom ImageVector
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add funds")
+                        Text("Add funds", maxLines = 1)
                     }
                     OutlinedButton(
                         onClick = onWithdrawClick,
                         modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) {
                         Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp)) // TODO: swap with custom ImageVector
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Withdraw")
+                        Text("Withdraw", maxLines = 1)
                     }
                 }
             }

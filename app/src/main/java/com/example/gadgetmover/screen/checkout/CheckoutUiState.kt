@@ -54,16 +54,16 @@ data class CheckoutUiState(
     val rentalSubtotal: Double get() = if (isRent) (negotiatedPrice ?: product?.rentalRatePerDay ?: 0.0) * rentalDuration else 0.0
     val refundableDeposit: Double get() = if (isRent) product?.deposit ?: 0.0 else 0.0
 
-    /** Shipping/fulfillment fee: one shipping leg's fee per method that's actually SHIPPING — a rental with both receiving and returning by shipping pays it twice, matching real courier cost. Reads the seller's own per-listing fee, not a platform-fixed amount. */
+    /** Shipping/fulfillment fee: only the outbound/receiving leg's fee, charged once — a rental's
+     * return leg is paid by the renter directly (out of band) when they actually ship the item
+     * back, not collected upfront through checkout. Reads the seller's own per-listing fee, not a
+     * platform-fixed amount. */
     val shippingFee: Double get() {
-        val tierFee = when (shippingTier) {
+        if (receivingMethod != FulfillmentMethod.SHIPPING) return 0.0
+        return when (shippingTier) {
             ShippingTier.STANDARD -> product?.standardShippingFee ?: 0.0
             ShippingTier.EXPRESS -> product?.expressShippingFee ?: 0.0
         }
-        var fee = 0.0
-        if (receivingMethod == FulfillmentMethod.SHIPPING) fee += tierFee
-        if (isRent && returningMethod == FulfillmentMethod.SHIPPING) fee += tierFee
-        return fee
     }
 
     /** At least RM2, or 4% of the item/rental subtotal, whichever is larger — scales with order size instead of a flat rate. */

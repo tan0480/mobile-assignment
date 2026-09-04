@@ -31,9 +31,28 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    const { amount, currency } = await req.json();
+    const { amount, currency, customer_id } = await req.json();
     if (!amount || typeof amount !== "number" || amount <= 0) {
       return new Response(JSON.stringify({ error: "Invalid amount" }), { status: 400 });
+    }
+
+    // customer_id is client-supplied (from the app's own prior get-or-create-stripe-customer
+    // call), so it's checked against the caller's own profile row rather than trusted outright —
+    // same rationale as create-payment-intent.
+    let customerId: string | undefined;
+    if (customer_id) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("stripe_customer_id")
+        .eq("id", user.id)
+        .single();
+      if (profileError) {
+        return new Response(JSON.stringify({ error: profileError.message }), { status: 500 });
+      }
+      if (profile?.stripe_customer_id !== customer_id) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
+      }
+      customerId = customer_id;
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -41,6 +60,7 @@ Deno.serve(async (req) => {
       currency: currency ?? "myr",
       metadata: { supabase_user_id: user.id, purpose: "wallet_topup" },
       automatic_payment_methods: { enabled: true },
+      ...(customerId ? { customer: customerId, setup_future_usage: "on_session" } : {}),
     });
 
     return new Response(

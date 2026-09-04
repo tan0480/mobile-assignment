@@ -239,6 +239,14 @@ alter table public.orders add column if not exists hidden_by_seller boolean not 
 -- pg_cron sweep to auto-complete an order whose 30-day review window has lapsed.
 alter table public.orders add column if not exists to_review_at timestamptz;
 
+-- A seller must never end up as their own buyer. The client already hides Buy Now/Rent for a
+-- listing's own owner (Product Detail's isOwner check, and the chat Special Price offer card),
+-- but that's UI-only — this is the actual backstop, enforced at the database level regardless of
+-- which insert path (today's direct client insert, or any future RPC/Edge Function) creates the
+-- row, so a self-purchase order can never exist no matter how it was attempted.
+alter table public.orders drop constraint if exists orders_buyer_not_seller;
+alter table public.orders add constraint orders_buyer_not_seller check (buyer_id <> seller_id);
+
 alter table public.orders enable row level security;
 
 drop policy if exists "buyers and sellers can read their own orders" on public.orders;
@@ -923,13 +931,40 @@ create trigger on_buy_order_cancelled
     after update of status on public.orders
     for each row execute function public.reopen_product_on_buy_order_cancelled();
 
+-- A successfully returned BUY order (buyer shipped/handed the item back, seller confirmed
+-- receipt) must reopen the listing too — otherwise a returned item stays permanently marked SOLD.
+-- Checking old.status specifically (rather than just new.status = 'REFUNDED') matters: a "refund
+-- only" resolution goes RETURN_REQUESTED -> REFUNDED directly with no physical return leg, and
+-- the buyer keeps the item in that case, so that path must NOT reopen the listing.
+create or replace function public.reopen_product_on_return_completed()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    if new.order_type = 'BUY' and old.status = 'RETURN_AWAITING_RECEIPT' and new.status = 'REFUNDED' then
+        update public.products set status = 'AVAILABLE'
+            where id = new.product_id and status = 'SOLD';
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists on_return_order_refunded on public.orders;
+create trigger on_return_order_refunded
+    after update of status on public.orders
+    for each row execute function public.reopen_product_on_return_completed();
+
 -- Releases the seller's/owner's payout the moment an order enters TO_REVIEW (BUY: buyer just
 -- confirmed receipt; RENT: owner just confirmed the *second* receipt — the item coming back —
--- never the first), and separately releases a full refund to the buyer when a return/refund
--- dispute's physical-return leg completes (RETURN_AWAITING_RECEIPT -> REFUNDED, seller just
--- confirmed the returned item arrived). Both are side effects of an already-authorized status
--- change (advance_order_status), so no separate client-callable RPC is needed — a client can
--- only ever trigger this by making a transition it was already allowed to make.
+-- never the first), releases a refund to the buyer when a return/refund dispute's physical-return
+-- leg completes (RETURN_AWAITING_RECEIPT -> REFUNDED, seller just confirmed the returned item
+-- arrived), and separately refunds a buyer/renter whose order gets cancelled. All three are side
+-- effects of an already-authorized status change (advance_order_status), so no separate
+-- client-callable RPC is needed — a client can only ever trigger this by making a transition it
+-- was already allowed to make. Every refund here excludes the shipping fee — it's a real courier
+-- cost already spent, unlike the platform fee, which the buyer still gets back.
 create or replace function public.release_order_payout()
 returns trigger
 language plpgsql
@@ -938,6 +973,8 @@ set search_path = public
 as $$
 declare
     v_payout numeric;
+    v_shipping_fee numeric;
+    v_refund numeric;
 begin
     if new.status = 'TO_REVIEW' and old.status in ('SHIPPED', 'RETURN_PENDING') then
         v_payout := new.total_amount - coalesce(new.deposit_amount, 0)
@@ -949,9 +986,19 @@ begin
     end if;
 
     if new.status = 'REFUNDED' and old.status = 'RETURN_AWAITING_RECEIPT' then
+        v_shipping_fee := coalesce((new.checkout_details->>'shippingFee')::numeric, 0);
+        v_refund := new.total_amount - v_shipping_fee;
         insert into public.wallet_transactions (user_id, type, amount, description)
-            values (new.buyer_id, 'REFUND', new.total_amount, new.product_title);
-        update public.profiles set wallet_balance = wallet_balance + new.total_amount where id = new.buyer_id;
+            values (new.buyer_id, 'REFUND', v_refund, new.product_title);
+        update public.profiles set wallet_balance = wallet_balance + v_refund where id = new.buyer_id;
+    end if;
+
+    if new.status = 'CANCELLED' and old.status in ('PAID', 'SHIPPED', 'RENTAL_SHIPPED') then
+        v_shipping_fee := coalesce((new.checkout_details->>'shippingFee')::numeric, 0);
+        v_refund := new.total_amount - v_shipping_fee;
+        insert into public.wallet_transactions (user_id, type, amount, description)
+            values (new.buyer_id, 'REFUND', v_refund, new.product_title);
+        update public.profiles set wallet_balance = wallet_balance + v_refund where id = new.buyer_id;
     end if;
 
     return new;
@@ -1122,6 +1169,10 @@ create table if not exists public.return_requests (
     decided_at timestamptz
 );
 
+-- The buyer's suggested meet-up spot, shown to the seller as context on the decide screen — not
+-- authoritative; decide_return_request() below lets the seller pick the actual final location.
+alter table public.return_requests add column if not exists meetup_location jsonb;
+
 alter table public.return_requests enable row level security;
 
 drop policy if exists "order parties can read return requests" on public.return_requests;
@@ -1132,6 +1183,7 @@ create policy "order parties can read return requests"
           and (auth.uid() = o.buyer_id or auth.uid() = o.seller_id)
     ));
 
+drop function if exists public.submit_return_request(uuid, text, text, text, numeric, text, text, text[]);
 create or replace function public.submit_return_request(
     p_order_id uuid,
     p_type text,
@@ -1140,7 +1192,8 @@ create or replace function public.submit_return_request(
     p_refund_amount numeric,
     p_return_method text,
     p_description text,
-    p_photo_urls text[]
+    p_photo_urls text[],
+    p_meetup_location jsonb
 )
 returns public.return_requests
 language plpgsql
@@ -1171,18 +1224,31 @@ begin
         raise exception 'You have already used both return/refund attempts for this order — please contact customer support';
     end if;
 
-    if p_type = 'REFUND' and (p_refund_amount is null or p_refund_amount <= 0 or p_refund_amount > v_order.total_amount) then
-        raise exception 'Refund amount must be between 0 and the order total';
+    -- Shipping fee is never refundable — it's a real courier cost already spent — so the cap
+    -- excludes it, unlike the platform fee which the buyer can still get back.
+    if p_type = 'REFUND' and (
+        p_refund_amount is null or p_refund_amount <= 0
+        or p_refund_amount > (v_order.total_amount - coalesce((v_order.checkout_details->>'shippingFee')::numeric, 0))
+    ) then
+        raise exception 'Refund amount must be between 0 and the order total minus shipping';
+    end if;
+
+    -- No longer required to match one of the product's own declared meet-up spots — the buyer can
+    -- suggest a fresh location just for this return, since it may not match where they'd meet for
+    -- the original handover at all.
+    if p_type = 'RETURN' and p_return_method = 'MEETUP' and (p_meetup_location is null or coalesce(p_meetup_location->>'name', '') = '') then
+        raise exception 'Please pick a meet-up location';
     end if;
 
     insert into public.return_requests (
         order_id, requester_id, attempt_number, request_type, reason_code, reason_other_text,
-        refund_amount, return_method, description, photo_urls
+        refund_amount, return_method, description, photo_urls, meetup_location
     ) values (
         p_order_id, auth.uid(), v_attempt_count + 1, p_type, p_reason_code, coalesce(p_reason_other, ''),
         case when p_type = 'REFUND' then p_refund_amount else null end,
         case when p_type = 'RETURN' then p_return_method else null end,
-        coalesce(p_description, ''), coalesce(p_photo_urls, '{}')
+        coalesce(p_description, ''), coalesce(p_photo_urls, '{}'),
+        case when p_type = 'RETURN' and p_return_method = 'MEETUP' then p_meetup_location else null end
     ) returning * into v_request;
 
     update public.orders set status = 'RETURN_REQUESTED' where id = p_order_id;
@@ -1191,9 +1257,19 @@ begin
 end;
 $$;
 
-grant execute on function public.submit_return_request(uuid, text, text, text, numeric, text, text, text[]) to authenticated;
+grant execute on function public.submit_return_request(uuid, text, text, text, numeric, text, text, text[], jsonb) to authenticated;
 
-create or replace function public.decide_return_request(p_request_id uuid, p_accept boolean, p_rejection_reason text)
+drop function if exists public.decide_return_request(uuid, boolean, text);
+create or replace function public.decide_return_request(
+    p_request_id uuid,
+    p_accept boolean,
+    p_rejection_reason text,
+    p_final_return_method text default null,
+    p_final_meetup_location jsonb default null,
+    p_final_return_receiver_name text default null,
+    p_final_return_phone_number text default null,
+    p_final_return_full_address text default null
+)
 returns public.return_requests
 language plpgsql
 security definer
@@ -1233,17 +1309,52 @@ begin
         update public.profiles set wallet_balance = wallet_balance + v_request.refund_amount where id = v_request.requester_id;
         update public.orders set status = 'REFUNDED' where id = v_request.order_id;
     else
-        -- RETURN: no payout yet — the buyer still has to ship/hand the item back, and the
+        -- RETURN: the seller picks the actual return logistics here (independent of whatever the
+        -- buyer suggested at submission) — mirrors how a rental's own return leg is always known
+        -- up front. No payout yet — the buyer still has to ship/hand the item back, and the
         -- release_order_payout() trigger only refunds once the seller confirms it arrived
         -- (RETURN_AWAITING_RECEIPT -> REFUNDED, driven by mark_order_shipped + advance_order_status).
-        update public.orders set status = 'RETURN_AWAITING_SHIP' where id = v_request.order_id;
+        if p_final_return_method not in ('MEETUP', 'SHIPPING') then
+            raise exception 'Please choose how you want the item returned to you';
+        end if;
+
+        -- No longer required to match one of the product's own declared meet-up spots — the
+        -- seller may pick a fresh location just for this return (see submit_return_request's
+        -- own matching relaxation for the buyer's suggestion).
+        if p_final_return_method = 'MEETUP' then
+            if p_final_meetup_location is null or coalesce(p_final_meetup_location->>'name', '') = '' then
+                raise exception 'Please pick a meet-up location';
+            end if;
+            update public.orders set
+                status = 'RETURN_AWAITING_SHIP',
+                checkout_details = checkout_details || jsonb_build_object(
+                    'returningMethod', 'MEETUP',
+                    'returningMeetup', p_final_meetup_location
+                )
+                where id = v_request.order_id;
+        else
+            if coalesce(trim(p_final_return_receiver_name), '') = ''
+                or coalesce(trim(p_final_return_phone_number), '') = ''
+                or coalesce(trim(p_final_return_full_address), '') = '' then
+                raise exception 'Please pick a return address';
+            end if;
+            update public.orders set
+                status = 'RETURN_AWAITING_SHIP',
+                checkout_details = checkout_details || jsonb_build_object(
+                    'returningMethod', 'SHIPPING',
+                    'returnReceiverName', p_final_return_receiver_name,
+                    'returnPhoneNumber', p_final_return_phone_number,
+                    'returnFullAddress', p_final_return_full_address
+                )
+                where id = v_request.order_id;
+        end if;
     end if;
 
     return v_request;
 end;
 $$;
 
-grant execute on function public.decide_return_request(uuid, boolean, text) to authenticated;
+grant execute on function public.decide_return_request(uuid, boolean, text, text, jsonb, text, text, text) to authenticated;
 
 create index if not exists return_requests_order_id_idx on public.return_requests(order_id);
 

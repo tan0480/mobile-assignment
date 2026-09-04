@@ -109,16 +109,25 @@ fun WalletAddFundsPaymentScreen(amount: Double, onBackClick: () -> Unit, onCompl
     val context = LocalContext.current
     val viewModel: WalletTopUpViewModel = viewModel(factory = remember(amount) { walletTopUpViewModelFactory(amount) })
     val paymentState by viewModel.paymentState.collectAsState()
-    val clientSecret by viewModel.clientSecretToPresent.collectAsState()
+    val paymentSheetPresentation by viewModel.paymentSheetPresentation.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
         PaymentConfiguration.init(context, BuildConfig.STRIPE_PUBLISHABLE_KEY)
     }
     val paymentSheet = PaymentSheet.Builder(resultCallback = viewModel::onPaymentSheetResult).build()
-    LaunchedEffect(clientSecret) {
-        clientSecret?.let { secret ->
-            paymentSheet.presentWithPaymentIntent(secret, PaymentSheet.Configuration(merchantDisplayName = "Gadget Mover"))
+    LaunchedEffect(paymentSheetPresentation) {
+        paymentSheetPresentation?.let { presentation ->
+            paymentSheet.presentWithPaymentIntent(
+                presentation.clientSecret,
+                PaymentSheet.Configuration(
+                    merchantDisplayName = "Gadget Mover",
+                    customer = PaymentSheet.CustomerConfiguration(
+                        id = presentation.customerId,
+                        ephemeralKeySecret = presentation.ephemeralKey
+                    )
+                )
+            )
         }
     }
     LaunchedEffect(paymentState) {

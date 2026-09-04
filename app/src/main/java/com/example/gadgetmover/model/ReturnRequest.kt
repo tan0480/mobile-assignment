@@ -32,6 +32,8 @@ data class ReturnRequest(
     val reasonOtherText: String = "",
     val refundAmount: Double? = null,
     val returnMethod: ReturnMethod? = null,
+    /** The buyer's suggested meet-up spot — context for the seller, not authoritative; the seller picks the final location when accepting. */
+    val meetupLocation: MeetupLocation? = null,
     val description: String = "",
     val photoUrls: List<String> = emptyList(),
     val status: ReturnRequestStatus = ReturnRequestStatus.PENDING,

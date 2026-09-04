@@ -7,8 +7,10 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.gadgetmover.data.CheckoutRepository
 import com.example.gadgetmover.data.WalletRepository
 import com.example.gadgetmover.screen.checkout.PaymentState
+import com.example.gadgetmover.screen.checkout.PaymentSheetPresentation
 import com.example.gadgetmover.screen.checkout.checkoutUserMessage
 import com.stripe.android.paymentsheet.PaymentSheetResult
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +23,9 @@ import kotlin.math.roundToLong
  * two-step Stripe pattern (create a PaymentIntent, present PaymentSheet, then re-verify with the
  * server before trusting it) closely enough to reuse its [PaymentState]/[checkoutUserMessage],
  * since crediting a wallet needs exactly the same "never trust the client alone" guarantee as
- * creating a paid order does.
+ * creating a paid order does. Also mirrors Checkout's Stripe Customer attachment
+ * ([CheckoutRepository.getOrCreateStripeCustomer] + [PaymentSheetPresentation]) so PaymentSheet
+ * offers the buyer's already-saved cards here too, instead of forcing fresh card entry every time.
  */
 class WalletTopUpViewModel(
     val amount: Double,
@@ -31,8 +35,8 @@ class WalletTopUpViewModel(
     private val _paymentState = MutableStateFlow<PaymentState>(PaymentState.Idle)
     val paymentState: StateFlow<PaymentState> = _paymentState
 
-    private val _clientSecretToPresent = MutableStateFlow<String?>(null)
-    val clientSecretToPresent: StateFlow<String?> = _clientSecretToPresent
+    private val _paymentSheetPresentation = MutableStateFlow<PaymentSheetPresentation?>(null)
+    val paymentSheetPresentation: StateFlow<PaymentSheetPresentation?> = _paymentSheetPresentation
 
     private var lastPaymentIntentId: String? = savedStateHandle.get<String>(KEY_INTENT_ID)
 
@@ -47,13 +51,19 @@ class WalletTopUpViewModel(
         if (_paymentState.value !is PaymentState.Idle && _paymentState.value !is PaymentState.Failed && _paymentState.value !is PaymentState.Cancelled) return
         _paymentState.value = PaymentState.CreatingPayment
         viewModelScope.launch {
+            val customerResult = CheckoutRepository.getOrCreateStripeCustomer()
+            val customer = customerResult.getOrNull()
+            if (customerResult.isFailure || customer == null) {
+                _paymentState.value = PaymentState.Failed(checkoutUserMessage(customerResult.exceptionOrNull(), "Couldn't start payment. Please try again."))
+                return@launch
+            }
             val amountCents = (amount * 100).roundToLong()
-            WalletRepository.createTopUpIntent(amountCents).fold(
+            WalletRepository.createTopUpIntent(amountCents, customer.customerId).fold(
                 onSuccess = { info ->
                     lastPaymentIntentId = info.paymentIntentId
                     savedStateHandle[KEY_INTENT_ID] = info.paymentIntentId
                     _paymentState.value = PaymentState.PaymentReady
-                    _clientSecretToPresent.value = info.clientSecret
+                    _paymentSheetPresentation.value = PaymentSheetPresentation(info.clientSecret, customer.customerId, customer.ephemeralKey)
                 },
                 onFailure = { error ->
                     _paymentState.value = PaymentState.Failed(checkoutUserMessage(error, "Couldn't start payment. Please try again."))
