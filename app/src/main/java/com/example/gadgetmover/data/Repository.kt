@@ -58,6 +58,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.time.Duration.Companion.days
 
 /**
  * In-memory repository backed by live Supabase data (cached offline).
@@ -711,6 +712,12 @@ object AuthRepository {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /** Re-fetches the signed-in user's own profile row from the server and replaces [currentUser] with it — for screens (Account Information) that need the authoritative post-change state rather than trusting an optimistic local patch. A logged-out call is a no-op. */
+    suspend fun refreshCurrentUser() {
+        val id = currentUser.value?.id ?: return
+        loadProfileIntoCurrentUser(id, currentUser.value?.email.orEmpty())
     }
 
     private suspend fun findProfileByEmail(email: String): ProfileRow? {
@@ -1463,7 +1470,11 @@ object ReturnRequestRepository {
 
     private const val RETURN_PHOTOS_BUCKET = "return-request-photos"
 
-    /** Uploads return/refund request photos to the `return-request-photos` bucket, same best-effort pattern as [ProductRepository.uploadProductImages]. */
+    /** Uploads return/refund request photos to the `return-request-photos` bucket. Unlike
+     * [ProductRepository.uploadProductImages]'s public bucket, this one is private — RLS-gated to
+     * just the order's buyer/seller (see schema.sql) — so a plain [io.github.jan.supabase.storage.BucketApi.publicUrl]
+     * 403s here; a signed URL carries its own access token, so [coil3.compose.AsyncImage] can load
+     * it with a bare GET. Signed for 10 years, effectively permanent for a dispute record. */
     suspend fun uploadPhotos(orderId: String, uris: List<Uri>, contentResolver: ContentResolver): List<String> {
         val bucket = supabase.storage.from(RETURN_PHOTOS_BUCKET)
         val urls = mutableListOf<String>()
@@ -1472,7 +1483,7 @@ object ReturnRequestRepository {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEachIndexed
                 val path = "$orderId/$index.jpg"
                 bucket.upload(path, bytes) { upsert = true }
-                urls.add(bucket.publicUrl(path))
+                urls.add(bucket.createSignedUrl(path, 3650.days))
             } catch (e: Exception) {
                 // Skip this photo — the rest of the request still submits.
             }
@@ -1487,10 +1498,10 @@ object ReturnRequestRepository {
         @SerialName("p_reason_code") val reasonCode: String,
         @SerialName("p_reason_other") val reasonOther: String,
         @SerialName("p_refund_amount") val refundAmount: Double?,
-        @SerialName("p_return_method") val returnMethod: String?,
+        @SerialName("p_return_methods") val returnMethods: List<String>,
         @SerialName("p_description") val description: String,
         @SerialName("p_photo_urls") val photoUrls: List<String>,
-        @SerialName("p_meetup_location") val meetupLocation: MeetupLocation?
+        @SerialName("p_meetup_locations") val meetupLocations: List<MeetupLocation>
     )
 
     /** Calls `submit_return_request` — validated server-side (buyer only, order must be SHIPPED, max 2 attempts). Returns an error message on failure so the UI can show why (e.g. "already 2 attempts"). */
@@ -1500,10 +1511,10 @@ object ReturnRequestRepository {
         reasonCode: String,
         reasonOther: String,
         refundAmount: Double?,
-        returnMethod: ReturnMethod?,
+        returnMethods: Set<ReturnMethod>,
         description: String,
         photoUrls: List<String>,
-        meetupLocation: MeetupLocation?
+        meetupLocations: List<MeetupLocation>
     ): Result<Unit> {
         return try {
             supabase.postgrest.rpc(
@@ -1514,10 +1525,10 @@ object ReturnRequestRepository {
                     reasonCode = reasonCode,
                     reasonOther = reasonOther,
                     refundAmount = refundAmount,
-                    returnMethod = returnMethod?.name,
+                    returnMethods = returnMethods.map { it.name },
                     description = description,
                     photoUrls = photoUrls,
-                    meetupLocation = meetupLocation
+                    meetupLocations = meetupLocations
                 )
             )
             Result.success(Unit)
@@ -1813,7 +1824,9 @@ object BrowseHistoryRepository {
         }
     }
 
-    fun recentProducts(): List<Product> = _viewedIds.mapNotNull { ProductRepository.getById(it) }
+    /** Excludes the viewer's own listings even if they're still sitting in [_viewedIds] from before viewing your own product stopped being recorded — a defensive filter, not just a write-time one. */
+    fun recentProducts(): List<Product> =
+        _viewedIds.mapNotNull { ProductRepository.getById(it) }.filter { it.sellerId != currentUserId() }
 
     suspend fun clear() {
         val uid = currentUserId() ?: return

@@ -4,18 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.pullToRefresh
@@ -56,21 +50,8 @@ fun AppPullToRefreshBox(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            if (isRefreshing) {
+            if (isRefreshing || state.distanceFraction > 0f) {
                 CircularProgressIndicator(modifier = Modifier.size(26.dp), color = BrandOrange, strokeWidth = 2.5.dp)
-            } else if (state.distanceFraction > 0f) {
-                Icon(
-                    Icons.Filled.Refresh,
-                    contentDescription = null,
-                    tint = BrandOrange,
-                    modifier = Modifier.size(26.dp)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Release to refresh",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
