@@ -3,10 +3,12 @@ package com.example.gadgetmover.util
 /** A country calling code option shown in the phone number field's country picker. */
 data class CountryCode(val countryName: String, val flagEmoji: String, val dialCode: String, val localDigits: IntRange)
 
+// Malaysia listed first — this app's marketplace is Malaysia-focused (all example addresses are
+// in Penang), so it's both the default selection and the top of the picker list.
 val countryCodes = listOf(
+    CountryCode("Malaysia", "🇲🇾", "+60", 9..10),
     CountryCode("United States", "🇺🇸", "+1", 10..10),
     CountryCode("Canada", "🇨🇦", "+1", 10..10),
-    CountryCode("Malaysia", "🇲🇾", "+60", 9..10),
     CountryCode("Singapore", "🇸🇬", "+65", 8..8),
     CountryCode("United Kingdom", "🇬🇧", "+44", 10..10),
     CountryCode("Australia", "🇦🇺", "+61", 9..9),
@@ -36,6 +38,9 @@ fun parsePhoneNumber(stored: String): Pair<CountryCode, String> {
     val remainder = digitsWithPlus.removePrefix(matchedCountry.dialCode)
     return matchedCountry to remainder.filter { it.isDigit() }
 }
+
+/** True if [phone] (freehand-typed, e.g. on the address form) has a plausible number of digits — used where there's no country-code picker to validate the exact length against. */
+fun isPlausiblePhoneNumber(phone: String): Boolean = phone.filter { it.isDigit() }.length in 7..15
 
 private val emailRegex = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
 

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AddressRepository
 import com.example.gadgetmover.model.Address
 import com.example.gadgetmover.screen.components.PickedLocation
+import com.example.gadgetmover.util.isPlausiblePhoneNumber
 import kotlinx.coroutines.launch
 
 /**
@@ -83,7 +84,9 @@ fun EditAddressScreen(
         }
     }
 
-    val isValid = label.isNotBlank() && receiverName.isNotBlank() && phoneNumber.isNotBlank() && fullAddress.isNotBlank()
+    val phoneError = phoneNumber.isNotBlank() && !isPlausiblePhoneNumber(phoneNumber)
+    val isValid = label.isNotBlank() && receiverName.isNotBlank() &&
+        phoneNumber.isNotBlank() && !phoneError && fullAddress.isNotBlank()
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -129,6 +132,10 @@ fun EditAddressScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
+                    isError = phoneError,
+                    supportingText = if (phoneError) {
+                        { Text("Enter a valid phone number") }
+                    } else null,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone)
                 )
             }

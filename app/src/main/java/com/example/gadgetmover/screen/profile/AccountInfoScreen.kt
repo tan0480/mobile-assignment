@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -41,12 +40,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.supabase
 import com.example.gadgetmover.screen.components.CreatePasswordDialog
 import com.example.gadgetmover.screen.components.PasswordConfirmDialog
+import com.example.gadgetmover.screen.components.PhoneNumberField
+import com.example.gadgetmover.util.isValidPhoneNumber
+import com.example.gadgetmover.util.parsePhoneNumber
 import io.github.jan.supabase.auth.user.Identity
 import io.github.jan.supabase.compose.auth.ComposeAuth
 import io.github.jan.supabase.compose.auth.composable.NativeSignInResult
@@ -74,7 +75,10 @@ fun AccountInfoScreen(
 
     var name by rememberSaveable(currentUser.id) { mutableStateOf(currentUser.name) }
     var userId by rememberSaveable(currentUser.id) { mutableStateOf(currentUser.userId) }
-    var phone by rememberSaveable(currentUser.id) { mutableStateOf(currentUser.phone) }
+    val (initialPhoneCountry, initialPhoneLocal) = remember(currentUser.id) { parsePhoneNumber(currentUser.phone) }
+    var phoneCountry by remember(currentUser.id) { mutableStateOf(initialPhoneCountry) }
+    var phoneLocal by rememberSaveable(currentUser.id) { mutableStateOf(initialPhoneLocal) }
+    var phoneError by remember { mutableStateOf(false) }
     var userIdError by remember { mutableStateOf<String?>(null) }
     var checkingUserId by remember { mutableStateOf(false) }
     var showConfirmSave by remember { mutableStateOf(false) }
@@ -129,7 +133,8 @@ fun AccountInfoScreen(
         onIdToken = ComposeAuth.LINK_IDENTITY_CALLBACK
     )
 
-    val isDirty = name != currentUser.name || userId != currentUser.userId || phone != currentUser.phone
+    val composedPhone = "${phoneCountry.dialCode} $phoneLocal"
+    val isDirty = name != currentUser.name || userId != currentUser.userId || composedPhone != currentUser.phone
     val isValid = name.isNotBlank() && userId.isNotBlank()
 
     fun requestSave() {
@@ -137,6 +142,8 @@ fun AccountInfoScreen(
             scope.launch { snackbarHostState.showSnackbar("Create a password below first to save changes") }
             return
         }
+        phoneError = !isValidPhoneNumber(phoneCountry, phoneLocal)
+        if (phoneError) return
         if (userId == currentUser.userId) {
             userIdError = null
             showConfirmSave = true
@@ -218,15 +225,23 @@ fun AccountInfoScreen(
                 )
             }
             LabeledField("Phone Number") {
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it.filter { c -> c.isDigit() || c == '+' || c == '-' || c == ' ' } },
+                PhoneNumberField(
+                    country = phoneCountry,
+                    onCountryChange = { phoneCountry = it; phoneError = false },
+                    localNumber = phoneLocal,
+                    onLocalNumberChange = { phoneLocal = it; phoneError = false },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    enabled = currentUser.hasPassword,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                    isError = phoneError,
+                    enabled = currentUser.hasPassword
                 )
+                if (phoneError) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Enter a valid ${phoneCountry.localDigits.first}-${phoneCountry.localDigits.last} digit number for ${phoneCountry.countryName}.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -329,7 +344,7 @@ fun AccountInfoScreen(
                 isSaving = true
                 scope.launch {
                     val success = AuthRepository.updateCurrentUser(
-                        currentUser.copy(name = name, userId = userId, phone = phone)
+                        currentUser.copy(name = name, userId = userId, phone = composedPhone)
                     )
                     if (success) {
                         AuthRepository.refreshCurrentUser()
