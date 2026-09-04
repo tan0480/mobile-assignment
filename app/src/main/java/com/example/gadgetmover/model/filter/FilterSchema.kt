@@ -292,7 +292,15 @@ object CommonFilterFields {
         )
     )
 
-    val fields: List<FilterField> = listOf(price, condition, fulfillmentMethod)
+    /** Matched against [com.example.gadgetmover.model.Product.sellerState] — the seller's own state, opportunistically resolved from a picked meet-up location during listing creation (see `util/SellerLocationResolver.kt`) — rather than anything in `specs`, same as [price]/[condition]/[fulfillmentMethod]. */
+    val sellerState = FilterField(
+        key = "seller_state",
+        label = "State",
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = MalaysiaStates.ALL.map { FilterOption(it, it) }
+    )
+
+    val fields: List<FilterField> = listOf(price, condition, fulfillmentMethod, sellerState)
 }
 
 /** Looks up the advanced filter schema for a given category. Categories with no entry yet fall back to `null` — the caller should hide the advanced-filters section rather than crash. */

@@ -4,12 +4,22 @@ import com.example.gadgetmover.model.Condition
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.Product
 
-/** True if any of [productIds] is one of [buyerIds] — either a catalogue id, or (for a [FilterType.SearchablePopupSelect] with free text typed in) a case-insensitive substring match against that id's option label. */
+/** Different category schemas phrase the same "nothing specific" concept differently — one field's catch-all option is "Other", another's is "None", another's is just "-". Resolving each to the same shared token here lets a buyer filtering by any one of them still match a product tagged with any of the others, instead of requiring an exact spelling match. */
+private val OTHER_EQUIVALENT_LABELS = setOf("other", "others", "none", "-")
+private const val OTHER_EQUIVALENT_TOKEN = "__other_equivalent__"
+
+private fun canonicalId(id: String, options: List<FilterOption>): String {
+    if (FilterFieldValue.isCustomId(id)) return id
+    val label = options.find { it.id == id }?.label?.trim()?.lowercase()
+    return if (label != null && label in OTHER_EQUIVALENT_LABELS) OTHER_EQUIVALENT_TOKEN else id
+}
+
+/** True if any of [productIds] is one of [buyerIds] — either a catalogue id (see [canonicalId] for the "Other"/"None"/"-" equivalence), or (for a [FilterType.SearchablePopupSelect] with free text typed in) a case-insensitive substring match against that id's option label. */
 private fun multiSelectMatches(field: FilterField, buyerIds: Set<String>, productIds: Set<String>): Boolean {
     if (buyerIds.isEmpty()) return true
-    val catalogueBuyerIds = buyerIds.filterNot { FilterFieldValue.isCustomId(it) }.toSet()
+    val catalogueBuyerIds = buyerIds.filterNot { FilterFieldValue.isCustomId(it) }.map { canonicalId(it, field.options) }.toSet()
     val customBuyerLabels = buyerIds.filter { FilterFieldValue.isCustomId(it) }.map { FilterFieldValue.customLabel(it).lowercase() }
-    if (productIds.any { it in catalogueBuyerIds }) return true
+    if (productIds.any { canonicalId(it, field.options) in catalogueBuyerIds }) return true
     if (customBuyerLabels.isEmpty()) return false
     return productIds.any { pid ->
         val label = field.options.find { it.id == pid }?.label ?: pid
@@ -35,8 +45,15 @@ private fun fieldMatches(field: FilterField, buyerValue: FilterFieldValue, produ
         is FilterFieldValue.MultiSelect ->
             multiSelectMatches(field, buyerValue.selectedIds, selectedIds(productValue))
 
-        is FilterFieldValue.SingleSelect ->
-            buyerValue.selectedId == null || buyerValue.selectedId in selectedIds(productValue)
+        is FilterFieldValue.SingleSelect -> {
+            val buyerId = buyerValue.selectedId
+            if (buyerId == null) {
+                true
+            } else {
+                val canonicalBuyer = canonicalId(buyerId, field.options)
+                selectedIds(productValue).any { canonicalId(it, field.options) == canonicalBuyer }
+            }
+        }
 
         is FilterFieldValue.RangeInput -> {
             val productRange = when (productValue) {
@@ -158,8 +175,12 @@ fun List<Product>.applyCategoryFilterState(state: CategoryFilterState, schema: C
             if (methods.isNotEmpty()) results = results.filter { product -> product.fulfillmentMethods.any { it in methods } }
         }
 
+    (state.valueFor("seller_state") as? FilterFieldValue.SingleSelect)?.selectedId?.let { selectedState ->
+        results = results.filter { it.sellerState == selectedState }
+    }
+
     for (field in schema.sections) {
-        if (field.key == "price" || field.key == "condition" || field.key == "fulfillment_method") continue
+        if (field.key == "price" || field.key == "condition" || field.key == "fulfillment_method" || field.key == "seller_state") continue
         val buyerValue = state.valueFor(field.key)
         if (!buyerValue.isFilled(field)) continue
         results = results.filter { product -> fieldMatches(field, buyerValue!!, product.specs.valueFor(field.key)) }
