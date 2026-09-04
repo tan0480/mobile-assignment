@@ -27,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.example.gadgetmover.data.AddressRepository
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.BrowseHistoryRepository
@@ -87,6 +88,7 @@ import com.example.gadgetmover.screen.profile.WalletAddFundsPaymentScreen
 import com.example.gadgetmover.screen.profile.WalletScreen
 import com.example.gadgetmover.screen.profile.WalletWithdrawAmountScreen
 import com.example.gadgetmover.screen.profile.WalletWithdrawDestinationScreen
+import com.example.gadgetmover.screen.profile.WriteReviewScreen
 import com.example.gadgetmover.util.formatMoney
 
 private val bottomBarRoutes = setOf(
@@ -376,7 +378,8 @@ fun GadgetMoverNavGraph() {
 
             composable(
                 route = Screen.ProductDetail.route,
-                arguments = listOf(navArgument("productId") { type = NavType.StringType })
+                arguments = listOf(navArgument("productId") { type = NavType.StringType }),
+                deepLinks = listOf(navDeepLink { uriPattern = "https://gadgetmover.app/product/{productId}" })
             ) { entry ->
                 val productId = entry.arguments?.getString("productId").orEmpty()
                 val product = ProductRepository.getById(productId)
@@ -417,8 +420,17 @@ fun GadgetMoverNavGraph() {
                     sellerId = sellerId,
                     sellerNameFallback = fallbackName,
                     onBackClick = { navController.popBackStack() },
-                    onProductClick = { navController.navigate(Screen.ProductDetail.createRoute(it.id)) }
+                    onProductClick = { navController.navigate(Screen.ProductDetail.createRoute(it.id)) },
+                    onReviewsClick = { navController.navigate(Screen.SellerReviews.createRoute(sellerId)) }
                 )
+            }
+
+            composable(
+                route = Screen.SellerReviews.route,
+                arguments = listOf(navArgument("sellerId") { type = NavType.StringType })
+            ) { entry ->
+                val sellerId = entry.arguments?.getString("sellerId").orEmpty()
+                ReviewsScreen(sellerId = sellerId, onBackClick = { navController.popBackStack() })
             }
 
             composable(
@@ -598,6 +610,7 @@ fun GadgetMoverNavGraph() {
                     onBackClick = { navController.popBackStack() },
                     onOrderClick = { order -> navController.navigate(Screen.OrderDetail.createRoute(order.id)) },
                     onRequestReturnClick = { order -> navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
+                    onWriteReviewClick = { order -> navController.navigate(Screen.WriteReview.createRoute(order.id)) },
                     initialTab = pendingActivitiesTab
                 )
             }
@@ -614,7 +627,23 @@ fun GadgetMoverNavGraph() {
                         onBackClick = { navController.popBackStack() },
                         onDeleted = { navController.popBackStack() },
                         onRequestReturnClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
-                        onReviewRequestClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) }
+                        onReviewRequestClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
+                        onWriteReviewClick = { navController.navigate(Screen.WriteReview.createRoute(order.id)) }
+                    )
+                }
+            }
+
+            composable(
+                route = Screen.WriteReview.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType })
+            ) { entry ->
+                val orderId = entry.arguments?.getString("orderId").orEmpty()
+                val order = OrderRepository.orders.find { it.id == orderId }
+                if (order != null) {
+                    WriteReviewScreen(
+                        order = order,
+                        onBackClick = { navController.popBackStack() },
+                        onSubmitted = { navController.popBackStack() }
                     )
                 }
             }

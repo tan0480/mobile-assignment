@@ -933,8 +933,15 @@ object OrderRepository {
             true
         } catch (e: Exception) {
             android.util.Log.e("OrderRepository", "markShipped(${order.id}) failed", e)
+            // The RPC call itself may have thrown after the update already committed server-side
+            // (e.g. decoding its response failed) — refetch and check whether the order's status
+            // actually moved on before reporting failure, so a genuinely-successful transition
+            // doesn't surface as an error (mirrors advanceStatus's catch-and-verify above; unlike
+            // that one, markShipped doesn't know its exact target status up front since the RPC
+            // derives it server-side from role/order type/current status, so "status changed at
+            // all from what it was before this call" is the signal instead).
             refreshFromRemote()
-            false
+            _orders.any { it.id == order.id && it.status != order.status }
         }
     }
 
@@ -1393,7 +1400,10 @@ object ReviewRepository {
         @SerialName("seller_id") val sellerId: String,
         val rating: Int,
         val comment: String = "",
-        @SerialName("created_at") val createdAt: String = ""
+        @SerialName("created_at") val createdAt: String = "",
+        @SerialName("image_urls") val imageUrls: List<String> = emptyList(),
+        @SerialName("seller_reply") val sellerReply: String? = null,
+        @SerialName("seller_replied_at") val sellerRepliedAt: String? = null
     )
 
     /** Every review left for [sellerId], newest first, with the reviewer's display name/avatar joined in from `profiles`. */
@@ -1418,7 +1428,10 @@ object ReviewRepository {
                     reviewerAvatar = profile?.avatarUrl.orEmpty(),
                     rating = row.rating.toFloat(),
                     comment = row.comment,
-                    date = row.createdAt
+                    date = row.createdAt,
+                    imageUrls = row.imageUrls,
+                    sellerReply = row.sellerReply,
+                    sellerRepliedAt = row.sellerRepliedAt
                 )
             })
         } catch (e: Exception) {
@@ -1430,23 +1443,62 @@ object ReviewRepository {
     private data class SubmitReviewParams(
         @SerialName("p_order_id") val orderId: String,
         @SerialName("p_rating") val rating: Int,
-        @SerialName("p_comment") val comment: String
+        @SerialName("p_comment") val comment: String,
+        @SerialName("p_image_urls") val imageUrls: List<String>
     )
 
     /** Calls `submit_review` — validated server-side (caller must be the order's buyer, order must be COMPLETED, one review per order) rather than a raw insert. */
-    suspend fun submitReview(orderId: String, rating: Int, comment: String): Boolean {
+    suspend fun submitReview(orderId: String, rating: Int, comment: String, imageUrls: List<String> = emptyList()): Boolean {
         return try {
-            supabase.postgrest.rpc("submit_review", SubmitReviewParams(orderId = orderId, rating = rating, comment = comment))
+            supabase.postgrest.rpc(
+                "submit_review",
+                SubmitReviewParams(orderId = orderId, rating = rating, comment = comment, imageUrls = imageUrls)
+            )
             true
         } catch (e: Exception) {
             false
         }
     }
 
+    private const val REVIEW_PHOTOS_BUCKET = "review-photos"
+
+    /** Uploads the buyer's review photos to the public `review-photos` bucket, at `{reviewerId}/{orderId}/{index}.jpg` (matches the storage.foldername(name))[1] = auth.uid() check in schema.sql's upload policy). Same skip-on-failure behavior as [ReturnRequestRepository.uploadPhotos] — a photo that fails to upload just doesn't make it into the review rather than blocking the whole submission. */
+    suspend fun uploadPhotos(orderId: String, reviewerId: String, uris: List<Uri>, contentResolver: ContentResolver): List<String> {
+        val bucket = supabase.storage.from(REVIEW_PHOTOS_BUCKET)
+        val urls = mutableListOf<String>()
+        uris.forEachIndexed { index, uri ->
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEachIndexed
+                val path = "$reviewerId/$orderId/$index.jpg"
+                bucket.upload(path, bytes) { upsert = true }
+                urls.add(bucket.publicUrl(path))
+            } catch (e: Exception) {
+                // Skip this photo — the rest of the review still submits.
+            }
+        }
+        return urls
+    }
+
     /** Whether [orderId] already has a review — gates the "Leave a Review" action on Order Detail. */
     suspend fun hasReviewed(orderId: String): Boolean {
         return try {
             supabase.from("reviews").select { filter { eq("order_id", orderId) } }.decodeList<ReviewRow>().isNotEmpty()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    @Serializable
+    private data class ReplyToReviewParams(
+        @SerialName("p_review_id") val reviewId: String,
+        @SerialName("p_reply") val reply: String
+    )
+
+    /** Calls `reply_to_review` — validated server-side (caller must be the reviewed seller). Callable again to edit an existing reply. */
+    suspend fun replyToReview(reviewId: String, reply: String): Boolean {
+        return try {
+            supabase.postgrest.rpc("reply_to_review", ReplyToReviewParams(reviewId = reviewId, reply = reply))
+            true
         } catch (e: Exception) {
             false
         }

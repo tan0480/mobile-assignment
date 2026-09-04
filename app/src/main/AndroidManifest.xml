@@ -35,6 +35,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Product detail deep link (shared via ProductDetailScreen's Share action, e.g.
+                 https://gadgetmover.app/product/{id}) — matched against Screen.ProductDetail's
+                 navDeepLink in NavGraph.kt. android:autoVerify requires a Digital Asset Links
+                 file hosted at https://gadgetmover.app/.well-known/assetlinks.json to make this
+                 an actual verified App Link; until that's hosted, Android will still offer this
+                 app in the chooser for matching links, just not auto-open it. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="gadgetmover.app"
+                    android:pathPrefix="/product" />
+            </intent-filter>
         </activity>
 
         <!-- Stripe's own card-entry screen (PaymentSheet) is a separate Activity declared in the

@@ -56,6 +56,9 @@ sealed class Screen(val route: String) {
     object ReturnRequest : Screen("return_request/{orderId}") {
         fun createRoute(orderId: String) = "return_request/$orderId"
     }
+    object WriteReview : Screen("write_review/{orderId}") {
+        fun createRoute(orderId: String) = "write_review/$orderId"
+    }
     object SavedItems : Screen("saved_items")
 
     object PaymentMethods : Screen("payment_methods")
@@ -77,6 +80,9 @@ sealed class Screen(val route: String) {
         fun createRoute(amount: Double) = "wallet_withdraw_destination/$amount"
     }
     object Reviews : Screen("reviews")
+    object SellerReviews : Screen("seller_reviews/{sellerId}") {
+        fun createRoute(sellerId: String) = "seller_reviews/$sellerId"
+    }
     object Analytics : Screen("analytics")
     object BrowseHistory : Screen("browse_history")
     object Settings : Screen("settings")
