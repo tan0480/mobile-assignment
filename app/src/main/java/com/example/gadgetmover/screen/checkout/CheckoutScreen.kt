@@ -177,7 +177,7 @@ fun CheckoutScreen(
                 title = { Text("Checkout") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -414,7 +414,7 @@ private fun RentalPeriodCard(uiState: CheckoutUiState, onStartClick: () -> Unit,
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onStartClick),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary) // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
@@ -454,7 +454,7 @@ private fun RentalPeriodCard(uiState: CheckoutUiState, onStartClick: () -> Unit,
             if (uiState.hasDateConflict) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         "These dates overlap with an existing booking. Please pick a different start date or duration.",
@@ -509,7 +509,7 @@ private fun ShippingTierCards(product: Product, selected: ShippingTier, onSelect
 private fun AddressCard(address: Address?, onChangeClick: () -> Unit) {
     Card(shape = RoundedCornerShape(14.dp), elevation = CardDefaults.cardElevation(1.dp)) {
         Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary) // TODO: swap with custom ImageVector
+            Icon(Icons.Filled.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 if (address == null) {

@@ -129,7 +129,7 @@ fun MessageInboxScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.Login, // TODO: swap with custom ImageVector
+                        Icons.Filled.Login,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -177,7 +177,7 @@ fun MessageInboxScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.Forum, // TODO: swap with custom ImageVector
+                        Icons.Filled.Forum,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -233,7 +233,7 @@ private fun NotificationsSummaryRow(onClick: () -> Unit) {
                 .background(BrandBlueDark),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Notifications, contentDescription = null, tint = Color.White) // TODO: swap with custom ImageVector
+            Icon(Icons.Filled.Notifications, contentDescription = null, tint = Color.White)
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

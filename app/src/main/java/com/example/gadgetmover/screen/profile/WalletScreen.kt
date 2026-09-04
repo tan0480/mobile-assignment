@@ -60,6 +60,7 @@ import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.util.formatDisplayDate
 import com.example.gadgetmover.util.formatMoney
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,7 +98,7 @@ fun WalletScreen(
                 title = { Text("Wallet") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -131,7 +132,7 @@ fun WalletScreen(
                         modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.Wallet, contentDescription = null, tint = Color.White) // TODO: swap with custom ImageVector
+                        Icon(Icons.Filled.Wallet, contentDescription = null, tint = Color.White)
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Text("Available balance", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
@@ -157,7 +158,7 @@ fun WalletScreen(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = BrandBlueDark)
                     ) {
-                        Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp)) // TODO: swap with custom ImageVector
+                        Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Add funds", maxLines = 1)
                     }
@@ -167,7 +168,7 @@ fun WalletScreen(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) {
-                        Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp)) // TODO: swap with custom ImageVector
+                        Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Withdraw", maxLines = 1)
                     }
@@ -184,7 +185,7 @@ fun WalletScreen(
 
             if (WalletRepository.transactions.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.SwapVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.SwapVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
@@ -205,6 +206,13 @@ fun WalletScreen(
 @Composable
 private fun TransactionRow(tx: WalletTransaction) {
     val isPositive = tx.amount >= 0
+    val title = if (tx.type == WalletTransactionType.DEPOSIT_REFUND) {
+        "Rental Deposit Refund"
+    } else {
+        tx.description
+    }
+    // Put the sign before the currency prefix: -RM100 / +RM100, never RM-100.
+    val amountText = if (isPositive) "+${formatMoney(tx.amount)}" else "-${formatMoney(abs(tx.amount))}"
     Card(shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(1.dp)) {
         Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -215,7 +223,7 @@ private fun TransactionRow(tx: WalletTransaction) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    if (isPositive) Icons.Filled.ArrowDownward else Icons.Filled.ArrowUpward, // TODO: swap with custom ImageVector
+                    if (isPositive) Icons.Filled.ArrowDownward else Icons.Filled.ArrowUpward,
                     contentDescription = null,
                     tint = if (isPositive) SuccessGreen else MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(16.dp)
@@ -223,11 +231,11 @@ private fun TransactionRow(tx: WalletTransaction) {
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(tx.description, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
                 Text(formatDisplayDate(tx.date), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
-                "${if (isPositive) "+" else ""}${formatMoney(tx.amount)}",
+                amountText,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (isPositive) SuccessGreen else MaterialTheme.colorScheme.error

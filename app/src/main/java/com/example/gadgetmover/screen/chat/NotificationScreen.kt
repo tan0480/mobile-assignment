@@ -85,7 +85,7 @@ fun NotificationScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
                 "Notifications",
@@ -120,7 +120,7 @@ fun NotificationScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.NotificationsNone, // TODO: swap with custom ImageVector
+                        Icons.Filled.NotificationsNone,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -192,7 +192,7 @@ private fun NotificationRow(notification: Notification, onClick: () -> Unit) {
                 .background(tint.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(iconFor(notification.type), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp)) // TODO: swap with custom ImageVector
+            Icon(iconFor(notification.type), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {

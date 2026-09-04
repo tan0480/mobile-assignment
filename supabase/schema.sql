@@ -693,7 +693,7 @@ create table if not exists public.wallet_transactions (
 -- with the old constraint.
 alter table public.wallet_transactions drop constraint if exists wallet_transactions_type_check;
 alter table public.wallet_transactions add constraint wallet_transactions_type_check
-    check (type in ('DEPOSIT', 'WITHDRAWAL', 'PURCHASE', 'SALE_PAYOUT', 'RENTAL_PAYOUT', 'REFUND'));
+    check (type in ('DEPOSIT', 'WITHDRAWAL', 'PURCHASE', 'SALE_PAYOUT', 'RENTAL_PAYOUT', 'DEPOSIT_REFUND', 'REFUND'));
 
 -- Idempotency key for a wallet top-up: lets credit_wallet() below safely no-op a duplicate
 -- confirm call for the same Stripe PaymentIntent instead of double-crediting. Null (and
@@ -831,9 +831,19 @@ create table if not exists public.notifications (
     message text not null default '',
     related_product_id uuid references public.products(id) on delete set null,
     related_sender_id uuid references auth.users(id) on delete set null,
+    related_order_id uuid references public.orders(id) on delete cascade,
+    -- Stable semantic identity for server-generated lifecycle events. Unlike the random row id,
+    -- this lets retries/replayed status writes use ON CONFLICT and remain exactly-once.
+    milestone_key text,
     is_read boolean not null default false,
     created_at timestamptz not null default now()
 );
+
+alter table public.notifications add column if not exists related_order_id uuid references public.orders(id) on delete cascade;
+alter table public.notifications add column if not exists milestone_key text;
+create unique index if not exists notifications_user_milestone_unique
+    on public.notifications(user_id, milestone_key) where milestone_key is not null;
+create index if not exists notifications_related_order_idx on public.notifications(related_order_id);
 
 alter table public.notifications enable row level security;
 
@@ -899,7 +909,9 @@ create trigger on_message_created
     after insert on public.messages
     for each row execute function public.notify_on_new_message();
 
--- New order -> notify the seller.
+-- A successfully paid order -> notify its seller exactly once. Both the recipient and sender are
+-- taken from the order row itself (never from an arbitrary client parameter), so a third party can
+-- neither receive nor manufacture another user's order notification.
 create or replace function public.notify_on_new_order()
 returns trigger
 language plpgsql
@@ -907,15 +919,23 @@ security definer
 set search_path = public
 as $$
 begin
-    insert into public.notifications (user_id, type, title, message, related_product_id, related_sender_id)
+    if new.status != 'PAID' and new.payment_status != 'PAID' then
+        return new;
+    end if;
+    insert into public.notifications (
+        user_id, type, title, message, related_product_id, related_sender_id,
+        related_order_id, milestone_key
+    )
     values (
         new.seller_id,
         case when new.order_type = 'RENT' then 'RENTAL_REQUEST' else 'PAYMENT' end,
-        case when new.order_type = 'RENT' then 'New rental request' else 'Payment confirmed' end,
-        new.product_title || ' — RM' || new.total_amount::text,
+        'New Order #' || upper(left(replace(new.id::text, '-', ''), 8)),
+        'Please prepare ' || new.product_title || ' for fulfillment',
         new.product_id,
-        new.buyer_id
-    );
+        new.buyer_id,
+        new.id,
+        'order:' || new.id::text || ':placed:seller'
+    ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
     return new;
 end;
 $$;
@@ -925,8 +945,22 @@ create trigger on_order_created
     after insert on public.orders
     for each row execute function public.notify_on_new_order();
 
--- Order status changed (via advance_order_status) -> notify whichever party
--- didn't make the change.
+-- Also covers a future checkout implementation that creates PAYMENT_PENDING first and marks the
+-- same row PAID only after its payment webhook succeeds. The milestone key deduplicates this from
+-- the INSERT trigger when a row was already created as PAID.
+drop trigger if exists on_order_paid_notification on public.orders;
+create trigger on_order_paid_notification
+    after update of status, payment_status on public.orders
+    for each row
+    when (
+        (new.status = 'PAID' and old.status is distinct from new.status)
+        or (new.payment_status = 'PAID' and old.payment_status is distinct from new.payment_status)
+    )
+    execute function public.notify_on_new_order();
+
+-- Major order milestones. Each branch targets only new.buyer_id/new.seller_id and carries the
+-- order id for Android/in-app deep links. Return-request decisions are handled by their own
+-- trigger below because an order status alone cannot distinguish accepted vs rejected requests.
 create or replace function public.notify_on_order_status_change()
 returns trigger
 language plpgsql
@@ -934,21 +968,115 @@ security definer
 set search_path = public
 as $$
 declare
-    v_recipient uuid;
+    v_number text := upper(left(replace(new.id::text, '-', ''), 8));
+    v_courier text;
+    v_tracking text;
+    v_shipping_detail text;
 begin
     if new.status = old.status then
         return new;
     end if;
-    v_recipient := case when auth.uid() = new.seller_id then new.buyer_id else new.seller_id end;
-    insert into public.notifications (user_id, type, title, message, related_product_id, related_sender_id)
-    values (
-        v_recipient,
-        'ORDER_UPDATE',
-        'Order status updated',
-        new.product_title || ' is now "' || new.status || '"',
-        new.product_id,
-        auth.uid()
-    );
+    if new.status in ('SHIPPED', 'RENTAL_SHIPPED') and old.status = 'PAID' then
+        v_courier := nullif(new.checkout_details->>'outboundCourier', '');
+        v_tracking := nullif(new.checkout_details->>'outboundTrackingNumber', '');
+        v_shipping_detail := case
+            when v_courier is not null and v_tracking is not null
+                then ' via ' || v_courier || ' - ' || v_tracking
+            when v_courier is not null then ' via ' || v_courier
+            else ''
+        end;
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values (
+            new.buyer_id, 'ORDER_UPDATE', 'Order #' || v_number || ' shipped',
+            'Order #' || v_number || ' has been shipped' || v_shipping_detail || '. Confirm receipt when it arrives.',
+            new.product_id, new.seller_id, new.id,
+            'order:' || new.id::text || ':outbound-shipped:buyer'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
+
+    if new.status = 'TO_REVIEW' and old.status = 'SHIPPED' then
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values (
+            new.seller_id, 'ORDER_UPDATE', 'Order #' || v_number || ' delivered',
+            'The buyer confirmed receipt. Your payout is now eligible.',
+            new.product_id, new.buyer_id, new.id,
+            'order:' || new.id::text || ':delivered:seller'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
+
+    if new.order_type = 'RENT' and new.status = 'RETURN_PENDING' and old.status = 'RENTING' then
+        v_courier := nullif(new.checkout_details->>'returnCourier', '');
+        v_tracking := nullif(new.checkout_details->>'returnTrackingNumber', '');
+        v_shipping_detail := case
+            when v_courier is not null and v_tracking is not null
+                then ' via ' || v_courier || ' - ' || v_tracking
+            when v_courier is not null then ' via ' || v_courier
+            else ''
+        end;
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values (
+            new.seller_id, 'ORDER_UPDATE', 'Rental #' || v_number || ' is being returned',
+            new.product_title || ' is on its way back' || v_shipping_detail || '.',
+            new.product_id, new.buyer_id, new.id,
+            'order:' || new.id::text || ':rental-return-shipped:seller'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
+
+    if new.order_type = 'RENT' and new.status = 'TO_REVIEW' and old.status = 'RETURN_PENDING' then
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values
+        (
+            new.buyer_id, 'ORDER_UPDATE', 'Rental return confirmed',
+            'The owner received rental #' || v_number || '. Your deposit is awaiting final inspection.',
+            new.product_id, new.seller_id, new.id,
+            'order:' || new.id::text || ':return-confirmed:buyer'
+        ),
+        (
+            new.seller_id, 'ORDER_UPDATE', 'Rental #' || v_number || ' returned',
+            'The return is complete and your rental payout is now eligible.',
+            new.product_id, new.buyer_id, new.id,
+            'order:' || new.id::text || ':return-complete:seller'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
+
+    if new.status = 'REFUNDED' and old.status in ('RETURN_REQUESTED', 'RETURN_AWAITING_RECEIPT') then
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values (
+            new.buyer_id, 'ORDER_UPDATE', 'Refund completed',
+            'Your refund for order #' || v_number || ' has been credited.',
+            new.product_id, new.seller_id, new.id,
+            'order:' || new.id::text || ':refund-complete:buyer'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
+
+    if new.status = 'COMPLETED' then
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values
+        (
+            new.buyer_id, 'ORDER_UPDATE', 'Order #' || v_number || ' completed',
+            new.product_title || ' is complete. Thank you for using Gadget Mover.',
+            new.product_id, new.seller_id, new.id,
+            'order:' || new.id::text || ':completed:buyer'
+        ),
+        (
+            new.seller_id, 'ORDER_UPDATE', 'Order #' || v_number || ' completed',
+            new.product_title || ' is complete and the transaction is closed.',
+            new.product_id, new.buyer_id, new.id,
+            'order:' || new.id::text || ':completed:seller'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
     return new;
 end;
 $$;
@@ -957,6 +1085,48 @@ drop trigger if exists on_order_status_changed on public.orders;
 create trigger on_order_status_changed
     after update of status on public.orders
     for each row execute function public.notify_on_order_status_change();
+
+-- Called opportunistically by OrderRepository.refreshFromRemote(). It only creates a reminder for
+-- the authenticated caller and only if that caller is one of the order's two parties. The partial
+-- unique index turns repeated refreshes on the due day into a no-op.
+create or replace function public.enqueue_due_rental_notifications()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_uid uuid := auth.uid();
+begin
+    if v_uid is null then return; end if;
+
+    insert into public.notifications (
+        user_id, type, title, message, related_product_id, related_sender_id,
+        related_order_id, milestone_key
+    )
+    select
+        v_uid,
+        'ORDER_UPDATE',
+        'Rental return due soon',
+        case when v_uid = o.buyer_id
+            then o.product_title || ' is due back by ' || to_char(o.rental_end_date, 'DD Mon YYYY') || '.'
+            else o.product_title || ' is due to be returned by ' || to_char(o.rental_end_date, 'DD Mon YYYY') || '.'
+        end,
+        o.product_id,
+        case when v_uid = o.buyer_id then o.seller_id else o.buyer_id end,
+        o.id,
+        'order:' || o.id::text || ':rental-due:' || o.rental_end_date::text || ':' || v_uid::text
+    from public.orders o
+    where o.order_type = 'RENT'
+      and o.status = 'RENTING'
+      and (o.buyer_id = v_uid or o.seller_id = v_uid)
+      and o.rental_end_date between current_date and current_date + 1
+    on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+end;
+$$;
+
+revoke all on function public.enqueue_due_rental_notifications() from public;
+grant execute on function public.enqueue_due_rental_notifications() to authenticated;
 
 -- If a BUY order is cancelled after mark_product_sold already ran, the listing must reopen —
 -- otherwise a cancelled purchase would permanently lock a product that was never actually sold.
@@ -1034,6 +1204,7 @@ begin
             values (new.seller_id, case when new.order_type = 'BUY' then 'SALE_PAYOUT' else 'RENTAL_PAYOUT' end,
                      v_payout, new.product_title);
         update public.profiles set wallet_balance = wallet_balance + v_payout where id = new.seller_id;
+
     end if;
 
     if new.status = 'REFUNDED' and old.status = 'RETURN_AWAITING_RECEIPT' then
@@ -1063,6 +1234,75 @@ drop trigger if exists on_order_payout_released on public.orders;
 create trigger on_order_payout_released
     after update of status on public.orders
     for each row execute function public.release_order_payout();
+
+-- Explicit post-inspection deposit release. This is deliberately a single security-definer RPC,
+-- not three client writes: the row lock + status mutation makes the operation idempotent, and the
+-- caller can never choose the recipient or amount. The deposit always comes from the order row and
+-- always goes to that order's buyer/renter.
+create or replace function public.release_rental_deposit(p_order_id uuid)
+returns public.orders
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_order public.orders%rowtype;
+    v_number text;
+begin
+    select * into v_order from public.orders where id = p_order_id for update;
+    if not found then raise exception 'Order not found'; end if;
+    if auth.uid() != v_order.seller_id then raise exception 'Only the rental owner can release the deposit'; end if;
+    if v_order.order_type != 'RENT' then raise exception 'This is not a rental order'; end if;
+    if v_order.status not in ('TO_REVIEW', 'COMPLETED', 'RETURNED') then
+        raise exception 'The returned item must be confirmed before releasing its deposit';
+    end if;
+    if coalesce(v_order.deposit_amount, 0) <= 0 then raise exception 'This rental has no refundable deposit'; end if;
+    if coalesce(v_order.checkout_details->>'depositStatus', 'HOLDING') not in ('HOLDING', 'HELD') then
+        raise exception 'This security deposit has already been resolved';
+    end if;
+
+    update public.orders
+        set checkout_details = checkout_details || jsonb_build_object('depositStatus', 'REFUNDED')
+        where id = v_order.id
+        returning * into v_order;
+
+    update public.profiles
+        set wallet_balance = wallet_balance + v_order.deposit_amount
+        where id = v_order.buyer_id;
+    insert into public.wallet_transactions (user_id, amount, type, description, created_at)
+        values (
+            v_order.buyer_id,
+            v_order.deposit_amount,
+            'DEPOSIT_REFUND',
+            'Security deposit refund for rental #' || left(v_order.id::text, 8),
+            now()
+        );
+
+    v_number := upper(left(replace(v_order.id::text, '-', ''), 8));
+    insert into public.notifications (
+        user_id, type, title, message, related_product_id, related_sender_id,
+        related_order_id, milestone_key
+    ) values
+    (
+        v_order.buyer_id, 'ORDER_UPDATE', 'Security deposit refunded',
+        'Your ' || trim(to_char(v_order.deposit_amount, 'FM999999990.00')) ||
+            ' MYR deposit for rental #' || v_number || ' was refunded to your wallet.',
+        v_order.product_id, v_order.seller_id, v_order.id,
+        'order:' || v_order.id::text || ':deposit-refunded:buyer'
+    ),
+    (
+        v_order.seller_id, 'ORDER_UPDATE', 'Security deposit released',
+        'The deposit for rental #' || v_number || ' was returned to the renter.',
+        v_order.product_id, v_order.buyer_id, v_order.id,
+        'order:' || v_order.id::text || ':deposit-refunded:seller'
+    ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+
+    return v_order;
+end;
+$$;
+
+revoke all on function public.release_rental_deposit(uuid) from public;
+grant execute on function public.release_rental_deposit(uuid) to authenticated;
 
 -- ============================================================================
 -- 9. saved_items
@@ -1466,6 +1706,64 @@ end;
 $$;
 
 grant execute on function public.decide_return_request(uuid, boolean, text, text, jsonb, text, text, text) to authenticated;
+
+-- Return/refund decisions need their own source row: an order status can tell us that the flow
+-- moved, but not whether the seller accepted or rejected the actual request. These notifications
+-- are still derived exclusively from the request's parent order parties.
+create or replace function public.notify_on_return_request_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_order public.orders%rowtype;
+    v_number text;
+begin
+    select * into v_order from public.orders where id = new.order_id;
+    if not found then return new; end if;
+    v_number := upper(left(replace(v_order.id::text, '-', ''), 8));
+
+    if tg_op = 'INSERT' then
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values (
+            v_order.seller_id, 'ORDER_UPDATE', 'Return request for order #' || v_number,
+            'The buyer submitted a ' || lower(new.request_type) || ' request for ' || v_order.product_title || '.',
+            v_order.product_id, v_order.buyer_id, v_order.id,
+            'return-request:' || new.id::text || ':submitted:seller'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    elsif new.status is distinct from old.status and new.status in ('ACCEPTED', 'REJECTED') then
+        insert into public.notifications (
+            user_id, type, title, message, related_product_id, related_sender_id,
+            related_order_id, milestone_key
+        ) values (
+            v_order.buyer_id, 'ORDER_UPDATE',
+            case when new.status = 'ACCEPTED' then 'Return/refund accepted' else 'Return/refund rejected' end,
+            case when new.status = 'ACCEPTED'
+                then 'Your ' || lower(new.request_type) || ' request for order #' || v_number || ' was accepted.'
+                else 'Your request for order #' || v_number || ' was rejected' ||
+                    case when nullif(trim(new.rejection_reason), '') is not null
+                        then ': ' || new.rejection_reason else '.' end
+            end,
+            v_order.product_id, v_order.seller_id, v_order.id,
+            'return-request:' || new.id::text || ':' || lower(new.status) || ':buyer'
+        ) on conflict (user_id, milestone_key) where milestone_key is not null do nothing;
+    end if;
+    return new;
+end;
+$$;
+
+drop trigger if exists on_return_request_created_notification on public.return_requests;
+create trigger on_return_request_created_notification
+    after insert on public.return_requests
+    for each row execute function public.notify_on_return_request_change();
+
+drop trigger if exists on_return_request_decided_notification on public.return_requests;
+create trigger on_return_request_decided_notification
+    after update of status on public.return_requests
+    for each row execute function public.notify_on_return_request_change();
 
 create index if not exists return_requests_order_id_idx on public.return_requests(order_id);
 

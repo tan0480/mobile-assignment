@@ -103,7 +103,7 @@ fun HelpCentreScreen(onBackClick: () -> Unit) {
                 title = { Text("Help Centre") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -240,7 +240,7 @@ private fun FaqCard(faq: FaqItem) {
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
-                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, // TODO: swap with custom ImageVector
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )

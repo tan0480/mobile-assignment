@@ -352,7 +352,7 @@ internal fun ListingWizardScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                     Text(
                         "List an item",
@@ -368,7 +368,7 @@ internal fun ListingWizardScreen(
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.AddAPhoto, // TODO: swap with custom ImageVector
+                        Icons.Filled.AddAPhoto,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -545,7 +545,7 @@ internal fun ListingWizardScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     } else {
                         Spacer(modifier = Modifier.size(44.dp))
@@ -1053,7 +1053,7 @@ private fun StepTransactionType(draft: ListingDraft, onChange: (ListingDraft) ->
                     ListingType.BUY -> Icons.Filled.AttachMoney
                     ListingType.RENT -> Icons.Filled.Schedule
                     ListingType.BOTH -> Icons.AutoMirrored.Filled.CompareArrows
-                }, // TODO: swap with custom ImageVector
+                },
                 selected = draft.listingType == type,
                 onClick = { onChange(draft.copy(listingType = type)) }
             )
@@ -1164,7 +1164,7 @@ private fun StepConditionAndBasics(draft: ListingDraft, onChange: (ListingDraft)
                             Text(location.address, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                         IconButton(onClick = { onChange(draft.copy(meetupLocations = draft.meetupLocations - location)) }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Remove location") // TODO: swap with custom ImageVector
+                            Icon(Icons.Filled.Close, contentDescription = "Remove location")
                         }
                     }
                 }

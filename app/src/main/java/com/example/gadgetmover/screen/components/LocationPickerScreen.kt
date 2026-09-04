@@ -205,7 +205,7 @@ fun LocationPickerScreen(
                 title = { Text("Pick a location") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -229,7 +229,7 @@ fun LocationPickerScreen(
             // Fixed center pin — the map moves underneath it, the standard modern e-commerce
             // address-picker pattern, rather than a draggable marker.
             Icon(
-                Icons.Filled.PinDrop, // TODO: swap with custom ImageVector
+                Icons.Filled.PinDrop,
                 contentDescription = "Selected location",
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier
@@ -309,7 +309,7 @@ fun LocationPickerScreen(
                 if (isLocating) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp))
                 } else {
-                    Icon(Icons.Filled.MyLocation, contentDescription = "Use my location") // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.MyLocation, contentDescription = "Use my location")
                 }
             }
 

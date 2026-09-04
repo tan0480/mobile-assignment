@@ -1,6 +1,7 @@
 package com.example.gadgetmover.data
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -9,6 +10,7 @@ import com.example.gadgetmover.model.BuyOrder
 import com.example.gadgetmover.model.ChatThread
 import com.example.gadgetmover.model.CheckoutDetails
 import com.example.gadgetmover.model.DepositStatus
+import com.example.gadgetmover.model.isHolding
 import com.example.gadgetmover.model.FilterState
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
@@ -33,6 +35,7 @@ import com.example.gadgetmover.model.User
 import com.example.gadgetmover.model.WalletTransaction
 import com.example.gadgetmover.model.WalletTransactionType
 import com.example.gadgetmover.util.ListingScoreCalculator
+import com.example.gadgetmover.notification.SystemNotifier
 import com.example.gadgetmover.util.haversineDistanceKm
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
@@ -852,6 +855,10 @@ object OrderRepository {
     suspend fun refreshFromRemote() {
         val uid = currentUserId() ?: return
         try {
+            // Time-based reminders cannot be emitted by an order-row trigger. This idempotent
+            // RPC enqueues the signed-in party's due rental reminder before notifications are
+            // refreshed; its database milestone key makes repeated app refreshes harmless.
+            runCatching { supabase.postgrest.rpc("enqueue_due_rental_notifications") }
             val rows = supabase.from("orders").select().decodeList<OrderRow>()
             if (rows.isEmpty()) {
                 _orders.clear()
@@ -1017,6 +1024,40 @@ object OrderRepository {
             refreshFromRemote()
             _orders.any { it.id == order.id && it.status != order.status }
         }
+    }
+
+    @Serializable
+    private data class ReleaseRentalDepositParams(@SerialName("p_order_id") val orderId: String)
+
+    /**
+     * Releases a returned rental's security deposit through one atomic, seller-authorized RPC.
+     * The database locks the order, re-checks its type/role/return state/holding status, credits
+     * the renter, writes the immutable DEPOSIT_REFUND ledger row and creates both parties'
+     * deduplicated notifications. No client-side read-modify-write of wallet_balance is used.
+     */
+    suspend fun releaseRentalDeposit(order: Order, context: Context): Result<Unit> = runCatching {
+        val rental = order as? RentalOrder
+            ?: throw IllegalArgumentException("Only rental orders have a security deposit")
+        val uid = currentUserId() ?: throw IllegalStateException("Sign in to release a deposit")
+        require(!rental.isRenter && rental.ownerId == uid) { "Only the rental owner can release the deposit" }
+        require(rental.checkout.depositStatus.isHolding) { "This security deposit is not being held" }
+        require(rental.deposit > 0.0) { "This rental has no refundable deposit" }
+
+        val row = supabase.postgrest.rpc(
+            "release_rental_deposit",
+            ReleaseRentalDepositParams(orderId = rental.id)
+        ).decodeSingle<OrderRow>()
+        val updated = row.toOrder(currentUserId = uid, counterpartyName = rental.counterpartyName)
+        val index = _orders.indexOfFirst { it.id == rental.id }
+        if (index >= 0) _orders[index] = updated
+
+        // Immediate local confirmation; the persisted realtime notification has the same
+        // milestone key and therefore replaces, rather than duplicates, this tray entry.
+        SystemNotifier.notifyDepositRefunded(context.applicationContext, updated)
+    }.onFailure {
+        android.util.Log.e("OrderRepository", "releaseRentalDeposit(${order.id}) failed", it)
+        // Reconcile if the network response was lost after the transaction committed.
+        refreshFromRemote()
     }
 
     @Serializable
@@ -1422,8 +1463,10 @@ object NotificationRepository {
                     val notification = row.toNotification().copy(relatedThreadId = threadId)
                     if (_notifications.none { it.id == notification.id }) {
                         _notifications.add(0, notification)
+                        // Only a genuinely new row should reach Android. Realtime reconnects can
+                        // replay an INSERT already present in memory.
+                        onNewNotification(notification)
                     }
-                    onNewNotification(notification)
                 }
             }
             try {

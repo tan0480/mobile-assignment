@@ -89,7 +89,7 @@ fun MyListingsScreen(
                 title = { Text("My Listings") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -112,7 +112,7 @@ fun MyListingsScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.Inventory2, // TODO: swap with custom ImageVector
+                        Icons.Filled.Inventory2,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -179,7 +179,7 @@ fun MyListingsScreen(
                                 }
                             }
                             IconButton(onClick = { pendingDelete = product }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Remove listing", tint = MaterialTheme.colorScheme.error) // TODO: swap with custom ImageVector
+                                Icon(Icons.Filled.Delete, contentDescription = "Remove listing", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

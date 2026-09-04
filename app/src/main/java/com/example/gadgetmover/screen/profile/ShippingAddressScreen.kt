@@ -86,14 +86,14 @@ fun ShippingAddressScreen(
                 title = { Text(if (selectionMode) "Select Address" else "My Addresses") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddAddress, containerColor = BrandBlueDark) {
-                Icon(Icons.Filled.Add, contentDescription = "Add address", tint = Color.White) // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.Add, contentDescription = "Add address", tint = Color.White)
             }
         }
     ) { padding ->
@@ -188,7 +188,7 @@ private fun AddressRow(address: Address, onSetDefault: () -> Unit, onEdit: () ->
                     Text(address.fullAddress, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Edit address") // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.Edit, contentDescription = "Edit address")
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
@@ -208,7 +208,7 @@ private fun AddressRow(address: Address, onSetDefault: () -> Unit, onEdit: () ->
                     )
                 }
                 TextButton(onClick = onRemove) {
-                    Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Delete", color = MaterialTheme.colorScheme.error)
                 }

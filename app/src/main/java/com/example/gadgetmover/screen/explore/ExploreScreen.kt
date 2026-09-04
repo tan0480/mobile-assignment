@@ -197,7 +197,7 @@ fun ExploreScreen(
             OutlinedTextField(
                 value = filterState.query,
                 onValueChange = { filterState = filterState.copy(query = it) },
-                placeholder = { Text("Search items or user") },
+                placeholder = { Text("Search for items") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(14.dp),
@@ -212,7 +212,7 @@ fun ExploreScreen(
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Icon(Icons.Filled.Tune, contentDescription = "Filters") // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.Tune, contentDescription = "Filters")
             }
         }
 
@@ -256,12 +256,12 @@ fun ExploreScreen(
                     onSelect = { filterState = filterState.copy(sortBy = it) }
                 )
                 ViewToggleButton(
-                    icon = Icons.Filled.GridView, // TODO: swap with custom ImageVector
+                    icon = Icons.Filled.GridView,
                     selected = isGridView,
                     onClick = { isGridView = true }
                 )
                 ViewToggleButton(
-                    icon = Icons.Filled.ViewList, // TODO: swap with custom ImageVector
+                    icon = Icons.Filled.ViewList,
                     selected = !isGridView,
                     onClick = { isGridView = false }
                 )
@@ -272,7 +272,7 @@ fun ExploreScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.SearchOff, // TODO: swap with custom ImageVector
+                        Icons.Filled.SearchOff,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant

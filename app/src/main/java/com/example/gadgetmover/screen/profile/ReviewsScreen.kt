@@ -80,7 +80,7 @@ fun ReviewsScreen(onBackClick: () -> Unit, sellerId: String? = null) {
                 title = { Text("Reviews") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -91,7 +91,7 @@ fun ReviewsScreen(onBackClick: () -> Unit, sellerId: String? = null) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Star, contentDescription = null, tint = AccentLime, modifier = Modifier.size(28.dp)) // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.Star, contentDescription = null, tint = AccentLime, modifier = Modifier.size(28.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     "%.1f".format(ReviewRepository.averageRating),
@@ -153,7 +153,7 @@ private fun ReviewCard(review: Review, canReply: Boolean, onImageClick: (String)
                     Text(formatDisplayDate(review.date), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Star, contentDescription = null, tint = BrandBlueDark, modifier = Modifier.size(14.dp)) // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.Star, contentDescription = null, tint = BrandBlueDark, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(2.dp))
                     Text(review.rating.toString(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }

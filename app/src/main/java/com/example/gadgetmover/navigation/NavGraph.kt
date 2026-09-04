@@ -5,12 +5,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,10 +27,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptionsBuilder
@@ -130,7 +135,11 @@ private fun NavHostController.navigateSafely(
 }
 
 @Composable
-fun GadgetMoverNavGraph() {
+fun GadgetMoverNavGraph(
+    notificationOrderId: String? = null,
+    notificationRecipientUserId: String? = null,
+    onNotificationOrderConsumed: () -> Unit = {}
+) {
     RequestStartupPermissions()
 
     val navController = rememberNavController()
@@ -209,6 +218,25 @@ fun GadgetMoverNavGraph() {
         } else {
             NotificationRepository.stopRealtimeListening()
         }
+    }
+
+    // MainActivity receives both cold-start and singleTop tray intents. Wait until session restore
+    // has identified the recipient and the current destination is interactive before dispatching;
+    // then consume the one-shot id so recomposition cannot open the same order twice.
+    LaunchedEffect(notificationOrderId, notificationRecipientUserId, currentUserId, backStackEntry) {
+        val orderId = notificationOrderId ?: return@LaunchedEffect
+        if (currentUserId == null || backStackEntry?.lifecycle?.currentState != Lifecycle.State.RESUMED) {
+            return@LaunchedEffect
+        }
+        if (notificationRecipientUserId != currentUserId) {
+            onNotificationOrderConsumed()
+            return@LaunchedEffect
+        }
+        navController.navigate(Screen.OrderDetail.createRoute(orderId, fromNotification = true)) {
+            popUpTo(0)
+            launchSingleTop = true
+        }
+        onNotificationOrderConsumed()
     }
 
     LaunchedEffect(Unit) {
@@ -682,7 +710,11 @@ fun GadgetMoverNavGraph() {
                 NotificationScreen(
                     onBackClick = { navController.popBackStack() },
                     onNotificationClick = { notification ->
-                        notification.relatedThreadId?.let { threadId ->
+                        if (notification.relatedOrderId != null) {
+                            navController.navigateSafely(
+                                Screen.OrderDetail.createRoute(notification.relatedOrderId, fromNotification = true)
+                            )
+                        } else notification.relatedThreadId?.let { threadId ->
                             navController.navigateSafely(Screen.ChatDetail.createRoute(threadId))
                         }
                     }
@@ -791,20 +823,62 @@ fun GadgetMoverNavGraph() {
 
             composable(
                 route = Screen.OrderDetail.route,
-                arguments = listOf(navArgument("orderId") { type = NavType.StringType })
+                arguments = listOf(
+                    navArgument("orderId") { type = NavType.StringType },
+                    navArgument("fromNotification") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    }
+                )
             ) { entry ->
                 val orderId = entry.arguments?.getString("orderId").orEmpty()
+                val fromNotification = entry.arguments?.getBoolean("fromNotification") ?: false
                 val order = OrderRepository.orders.find { it.id == orderId }
+                var orderLookupFinished by remember(orderId) { mutableStateOf(order != null) }
+                LaunchedEffect(orderId, currentUserId) {
+                    if (order == null && currentUserId != null) OrderRepository.refreshFromRemote()
+                    orderLookupFinished = true
+                }
                 if (order != null) {
+                    val returnToActivities = {
+                        // A seller always lands in Sales, including a rental owner, per the
+                        // notification-entry contract. Buyer-side rentals use Rentals.
+                        pendingActivitiesTab = when {
+                            order is com.example.gadgetmover.model.BuyOrder && !order.isPurchase -> 1
+                            order is RentalOrder && !order.isRenter -> 1
+                            order is RentalOrder -> 2
+                            else -> 0
+                        }
+                        // Build a proper backstack (Home → Profile → MyActivities) so pressing
+                        // back from MyActivities lands on Profile instead of getting stuck.
+                        // The previous popUpTo(0) wiped the entire backstack, leaving
+                        // MyActivities orphaned with nothing to pop back to.
+                        navController.navigateSafely(Screen.Profile.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = false
+                            }
+                        }
+                        navController.navigateSafely(Screen.MyActivities.route)
+                    }
                     OrderDetailScreen(
                         order = order,
                         onBackClick = { navController.popBackStack() },
-                        onDeleted = { navController.popBackStack() },
+                        onDeleted = if (fromNotification) returnToActivities else ({
+                            navController.popBackStack()
+                            Unit
+                        }),
+                        fromNotification = fromNotification,
+                        onNotificationBack = returnToActivities,
                         onRequestReturnClick = { navController.navigateSafely(Screen.ReturnRequest.createRoute(order.id)) },
                         onReviewRequestClick = { navController.navigateSafely(Screen.ReturnRequest.createRoute(order.id)) },
                         onWriteReviewClick = { navController.navigateSafely(Screen.WriteReview.createRoute(order.id)) },
                         onProductClick = { navController.navigateSafely(Screen.ProductDetail.createRoute(order.productId)) }
                     )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (!orderLookupFinished) CircularProgressIndicator()
+                        else Text("This order is unavailable for the signed-in account")
+                    }
                 }
             }
 

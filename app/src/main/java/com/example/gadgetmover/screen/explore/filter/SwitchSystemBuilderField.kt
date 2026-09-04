@@ -98,7 +98,7 @@ fun SwitchSystemBuilderField(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp)) // TODO: swap with custom ImageVector
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("Add Switch")
         }
@@ -139,11 +139,11 @@ private fun SwitchRequirementCard(
                     }
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete Switch ${index + 1}", tint = MaterialTheme.colorScheme.error) // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete Switch ${index + 1}", tint = MaterialTheme.colorScheme.error)
                 }
                 IconButton(onClick = onToggleExpand) {
                     Icon(
-                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, // TODO: swap with custom ImageVector
+                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                         contentDescription = if (expanded) "Collapse Switch ${index + 1}" else "Expand Switch ${index + 1}"
                     )
                 }

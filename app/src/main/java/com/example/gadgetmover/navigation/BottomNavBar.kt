@@ -66,7 +66,7 @@ fun GadgetMoverBottomBar(
 
     NavigationBar {
         bottomNavItems.forEach { item ->
-            val selected = currentDestination?.hierarchy?.any { it.route == item.matchRoute } == true
+            val selected = currentDestination?.hierarchy?.any { it.route?.substringBefore("?") == item.matchRoute.substringBefore("?") } == true
             NavigationBarItem(
                 selected = selected,
                 onClick = {
@@ -75,12 +75,23 @@ fun GadgetMoverBottomBar(
                             if (navController.currentBackStackEntry?.lifecycle?.currentState != Lifecycle.State.RESUMED) {
                                 return@interceptNavigation
                             }
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+                            if (item.route == Screen.Home.route) {
+                                navController.navigate(Screen.Home.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        inclusive = false
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
+                            } else {
+                                navController.navigate(item.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
                         }
                     }

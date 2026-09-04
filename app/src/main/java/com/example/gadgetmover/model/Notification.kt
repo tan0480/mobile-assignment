@@ -16,10 +16,16 @@ enum class NotificationType(val label: String) {
 @Serializable
 data class Notification(
     val id: String,
+    /** The RLS-scoped recipient. SystemNotifier checks this again before posting to Android. */
+    val recipientUserId: String,
     val type: NotificationType,
     val title: String,
     val message: String,
     val timestamp: String,
     val isRead: Boolean = false,
-    val relatedThreadId: String? = null
+    val relatedThreadId: String? = null,
+    /** Present for order lifecycle notifications and used by both in-app and tray deep links. */
+    val relatedOrderId: String? = null,
+    /** Stable server milestone identity, also used as the Android notification replacement id. */
+    val milestoneKey: String? = null
 )

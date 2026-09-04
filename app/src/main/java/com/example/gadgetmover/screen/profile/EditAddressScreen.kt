@@ -95,7 +95,7 @@ fun EditAddressScreen(
                 title = { Text(if (existing == null) "Add Address" else "Edit Address") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -154,7 +154,7 @@ fun EditAddressScreen(
                 onClick = onPickOnMap,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp)) // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.padding(4.dp))
                 Text(if (latitude != null) "Location pinned — pick again" else "Pick on map")
             }

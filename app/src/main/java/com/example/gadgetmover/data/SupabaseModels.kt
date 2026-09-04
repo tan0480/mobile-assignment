@@ -370,17 +370,22 @@ data class NotificationRow(
     val message: String = "",
     @SerialName("related_product_id") val relatedProductId: String? = null,
     @SerialName("related_sender_id") val relatedSenderId: String? = null,
+    @SerialName("related_order_id") val relatedOrderId: String? = null,
+    @SerialName("milestone_key") val milestoneKey: String? = null,
     @SerialName("is_read") val isRead: Boolean = false,
     @SerialName("created_at") val createdAt: String = ""
 )
 
 fun NotificationRow.toNotification(): Notification = Notification(
     id = id,
+    recipientUserId = userId,
     type = enumOrDefault(type, NotificationType.LISTING_UPDATE),
     title = title,
     message = message,
     timestamp = createdAt,
-    isRead = isRead
+    isRead = isRead,
+    relatedOrderId = relatedOrderId,
+    milestoneKey = milestoneKey
 )
 
 /** Wire shape of the `addresses` table — one row per saved shipping/receiving address, RLS-scoped to its owner. */

@@ -162,7 +162,7 @@ fun HomeScreen(
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Filled.AccountCircle, // TODO: swap with custom ImageVector
+                    imageVector = Icons.Filled.AccountCircle,
                     contentDescription = "Guest",
                     modifier = Modifier.size(44.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -301,7 +301,7 @@ private fun LoginReminderBanner(onLoginClick: () -> Unit, onDismiss: () -> Unit)
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                 Icon(
-                    Icons.Filled.Close, // TODO: swap with custom ImageVector
+                    Icons.Filled.Close,
                     contentDescription = "Dismiss",
                     tint = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.size(18.dp)
