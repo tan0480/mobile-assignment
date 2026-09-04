@@ -63,6 +63,7 @@ import com.example.gadgetmover.model.filter.CategoryFilterRegistry
 import com.example.gadgetmover.model.filter.displayText
 import com.example.gadgetmover.model.filter.isFilled
 import com.example.gadgetmover.screen.components.ConditionBadge
+import com.example.gadgetmover.screen.components.FullScreenImageViewer
 import com.example.gadgetmover.screen.components.ListingTypeBadge
 import com.example.gadgetmover.screen.components.LoginRequiredDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
@@ -82,6 +83,7 @@ fun ProductDetailScreen(
 ) {
     var isSaved by remember { mutableStateOf(ProductRepository.isSaved(product.id)) }
     var showLoginDialog by remember { mutableStateOf(false) }
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
     val isOwner = product.sellerId == AuthRepository.currentUser.value?.id
     val scope = rememberCoroutineScope()
 
@@ -113,7 +115,10 @@ fun ProductDetailScreen(
                     contentDescription = product.title,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(1.1f),
+                        .aspectRatio(1.1f)
+                        .clickable(enabled = product.images.isNotEmpty()) {
+                            previewImageUrl = product.images.first()
+                        },
                     contentScale = ContentScale.Crop
                 )
                 Row(
@@ -218,6 +223,10 @@ fun ProductDetailScreen(
 
     if (showLoginDialog) {
         LoginRequiredDialog(onDismiss = { showLoginDialog = false }, onLoginClick = onLoginRequired)
+    }
+
+    previewImageUrl?.let { url ->
+        FullScreenImageViewer(imageUrl = url, onDismiss = { previewImageUrl = null })
     }
 }
 

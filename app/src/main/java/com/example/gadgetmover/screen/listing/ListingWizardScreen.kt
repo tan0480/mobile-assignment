@@ -45,6 +45,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
@@ -105,6 +107,7 @@ import com.example.gadgetmover.model.Condition
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.MeetupLocation
+import com.example.gadgetmover.screen.components.NameMeetupLocationDialog
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductCategory
@@ -121,6 +124,8 @@ import com.example.gadgetmover.util.sanitizeMoneyInput
 import com.example.gadgetmover.util.validateListingNumbers
 
 import com.example.gadgetmover.ui.theme.BrandOrange
+import androidx.core.content.FileProvider
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -815,36 +820,6 @@ private fun DraftCard(saved: SavedListingDraft, onResume: () -> Unit, onDelete: 
 private fun formatDraftSavedAt(millis: Long): String = SimpleDateFormat("MMM d, h:mm a", Locale.US).format(Date(millis))
 
 @Composable
-private fun NameMeetupLocationDialog(address: String, initialName: String?, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var name by remember { mutableStateOf(initialName.orEmpty()) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Name this meet-up spot") },
-        text = {
-            Column {
-                Text(address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("e.g. TAR UMT, KLCC LRT") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(name.ifBlank { "Meet-up spot" }) }, enabled = name.isNotBlank()) {
-                Text("Add")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
 private fun ListingProgressCard(step: Int) {
     val percent = ((step + 1) * 100) / stepTitles.size
     Column(
@@ -1334,11 +1309,33 @@ private fun StepPricing(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
 
 private const val MAX_LISTING_PHOTOS = 8
 
+/** A fresh cache file the system Camera app can write a capture into, exposed as a content:// Uri via [FileProvider] (Camera can't write to a plain file:// path). */
+private fun createCameraCaptureUri(context: android.content.Context): Uri {
+    val dir = File(context.cacheDir, "listing_photos").apply { mkdirs() }
+    val file = File(dir, "IMG_${System.currentTimeMillis()}.jpg")
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
 @Composable
 private fun StepPhotos(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
+    val context = LocalContext.current
     val pickPhotos = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(MAX_LISTING_PHOTOS)
     ) { uris -> if (uris.isNotEmpty()) onChange(draft.copy(imageUris = uris)) }
+
+    // TakePicture() writes into a Uri we hand it up front rather than returning one itself, so
+    // the Uri to append on success has to be stashed here between launch and callback.
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    val takePhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val uri = pendingCameraUri
+        pendingCameraUri = null
+        if (success && uri != null) {
+            onChange(draft.copy(imageUris = draft.imageUris + uri))
+        }
+    }
+    var showPhotoSourceMenu by remember { mutableStateOf(false) }
 
     val totalCount = draft.existingImageUrls.size + draft.imageUris.size
 
@@ -1390,17 +1387,35 @@ private fun StepPhotos(draft: ListingDraft, onChange: (ListingDraft) -> Unit) {
             }
             if (totalCount < MAX_LISTING_PHOTOS) {
                 item {
-                    Box(
-                        modifier = Modifier
-                            .size(84.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable {
-                                pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.AddAPhoto, contentDescription = "Add photo") // TODO: swap with custom ImageVector
+                    Box {
+                        Box(
+                            modifier = Modifier
+                                .size(84.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { showPhotoSourceMenu = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.AddAPhoto, contentDescription = "Add photo") // TODO: swap with custom ImageVector
+                        }
+                        DropdownMenu(expanded = showPhotoSourceMenu, onDismissRequest = { showPhotoSourceMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Take Photo") },
+                                onClick = {
+                                    showPhotoSourceMenu = false
+                                    val uri = createCameraCaptureUri(context)
+                                    pendingCameraUri = uri
+                                    takePhoto.launch(uri)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Choose from Gallery") },
+                                onClick = {
+                                    showPhotoSourceMenu = false
+                                    pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                }
+                            )
+                        }
                     }
                 }
             }

@@ -1,6 +1,5 @@
 package com.example.gadgetmover.screen.profile
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +66,7 @@ fun MyListingsScreen(
     onProductClick: (Product) -> Unit
 ) {
     val listings = ProductRepository.myListings(AuthRepository.currentUser.value?.id.orEmpty())
+        .filter { it.status != ProductStatus.SOLD }
     var pendingDelete by remember { mutableStateOf<Product?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -138,21 +138,6 @@ fun MyListingsScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     ListingTypeBadge(listingType = product.listingType)
-                                    if (product.status == ProductStatus.SOLD) {
-                                        Row(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f))
-                                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                                        ) {
-                                            Text(
-                                                "Sold",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.error,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 val showSalePrice = product.listingType == ListingType.BUY || product.listingType == ListingType.BOTH
