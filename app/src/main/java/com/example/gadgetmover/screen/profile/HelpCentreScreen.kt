@@ -65,6 +65,12 @@ private const val SUPPORT_EMAIL = "support@gadgetmover.com"
 private data class FaqItem(val question: String, val answer: String)
 
 private val faqs = listOf(
+    FaqItem(
+        "How does the Search & Recommendation Algorithm work?",
+        "Gadget Mover rewards sellers who post high-quality, comprehensive listings: the more of a listing's category-specific technical specifications you fill in — things like CPU, RAM, Video Ports, and Condition — the higher it can rank in Explore search results and the Home screen's Recommended for You section.\n\n" +
+            "This is the Listing Completeness Boost: a listing with all of its applicable specs filled in gets up to a 50% higher ranking score than an otherwise-identical listing left mostly blank. You can watch your own boost update live as you fill in the Specifications step while creating a listing.\n\n" +
+            "Complete specs also matter beyond ranking — buyers narrow their search with granular category filters (e.g. \"16GB RAM\" or \"HDMI 2.1\"), and a listing can only surface under a filter if that spec was actually filled in."
+    ),
     FaqItem("How do rental deposits work?", "Deposits are held until the item is returned in the agreed condition, then refunded to your wallet within 3 business days."),
     FaqItem("How do I get paid for a sale?", "Once a buyer confirms receipt, the sale amount is credited to your Gadget Mover wallet, ready to withdraw to your bank."),
     FaqItem("What if an item arrives damaged?", "Message the seller first. If it's not resolved within 48 hours, contact support and we'll step in to mediate."),

@@ -54,6 +54,7 @@ import com.example.gadgetmover.data.NotificationRepository
 import com.example.gadgetmover.model.ChatThread
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
+import com.example.gadgetmover.screen.components.UserAvatar
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.util.formatDisplayDate
@@ -107,7 +108,11 @@ fun MessageInboxScreen(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         MessagesTopBar()
 
         if (!sessionRestored) {
@@ -266,20 +271,14 @@ private fun ChatThreadRow(thread: ChatThread, onClick: () -> Unit, onLongClick: 
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(avatarColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                thread.participantName.take(1).uppercase(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = BrandBlueDark
-            )
-        }
+        UserAvatar(
+            avatarUrl = thread.participantAvatar,
+            displayName = thread.participantName,
+            modifier = Modifier.size(48.dp),
+            fallbackBackground = avatarColor,
+            fallbackContentColor = BrandBlueDark,
+            contentDescription = "${thread.participantName}'s avatar"
+        )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Row(

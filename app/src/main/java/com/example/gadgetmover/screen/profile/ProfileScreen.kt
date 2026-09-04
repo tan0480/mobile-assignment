@@ -71,6 +71,7 @@ import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.model.User
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.LoginRequiredDialog
+import com.example.gadgetmover.screen.components.UserAvatar
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.BrandOrange
@@ -119,7 +120,11 @@ fun ProfileScreen(
         if (isLoggedIn) refreshProfile()
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         ProfileTopBar(
             onSettingsClick = { requireLogin { onQuickActionClick(ProfileQuickAction.SETTINGS) } }
         )
@@ -282,20 +287,14 @@ private fun ProfileHeaderCard(
     ) {
         if (isLoggedIn && user != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(AccentLime),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        user.name.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandBlueDark
-                    )
-                }
+                UserAvatar(
+                    avatarUrl = user.avatarUrl,
+                    displayName = user.name,
+                    modifier = Modifier.size(56.dp),
+                    fallbackBackground = AccentLime,
+                    fallbackContentColor = BrandBlueDark,
+                    contentDescription = "Your profile photo"
+                )
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
