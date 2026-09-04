@@ -105,6 +105,11 @@ fun GadgetMoverNavGraph() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.hierarchy?.firstOrNull()?.route
+    // ListingWizard.route is shared by both "new listing" (a bottom-bar tab) and "edit listing"
+    // (pushed from My Listings), which currentRoute alone can't tell apart — only the actual
+    // editProductId argument on this entry distinguishes them.
+    val isEditingExistingListing = currentRoute == Screen.ListingWizard.route &&
+        backStackEntry?.arguments?.getString("editProductId")?.let { it != Screen.ListingWizard.NEW_LISTING_ID } == true
 
     val context = LocalContext.current
     // The intro screen is only ever the start destination on the very first launch;
@@ -196,7 +201,7 @@ fun GadgetMoverNavGraph() {
 
     Scaffold(
         bottomBar = {
-            if (currentRoute in bottomBarRoutes) {
+            if (currentRoute in bottomBarRoutes && !isEditingExistingListing) {
                 val unreadCount = if (AuthRepository.isLoggedIn.value) ChatRepository.totalUnread else 0
                 GadgetMoverBottomBar(
                     navController = navController,
@@ -488,6 +493,12 @@ fun GadgetMoverNavGraph() {
                         },
                         onViewActivitiesClick = {
                             pendingActivitiesTab = if (order is RentalOrder) 2 else 0
+                            // Reset the back stack down to Profile first (mirroring the login-success
+                            // reset pattern above) so back from My Activities lands on Profile — not on
+                            // this now-stale confirmation screen or whatever preceded checkout.
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(0)
+                            }
                             navController.navigate(Screen.MyActivities.route)
                         }
                     )
@@ -609,6 +620,7 @@ fun GadgetMoverNavGraph() {
                 MyActivitiesScreen(
                     onBackClick = { navController.popBackStack() },
                     onOrderClick = { order -> navController.navigate(Screen.OrderDetail.createRoute(order.id)) },
+                    onRequestReturnClick = { order -> navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
                     initialTab = pendingActivitiesTab
                 )
             }
@@ -636,6 +648,14 @@ fun GadgetMoverNavGraph() {
             ) { entry ->
                 val orderId = entry.arguments?.getString("orderId").orEmpty()
                 val order = OrderRepository.orders.find { it.id == orderId }
+                val pickedAddressId by entry.savedStateHandle.getStateFlow<String?>("selected_address_id", null).collectAsState()
+                val pickedLat by entry.savedStateHandle.getStateFlow<Double?>("picked_lat", null).collectAsState()
+                val pickedLng by entry.savedStateHandle.getStateFlow<Double?>("picked_lng", null).collectAsState()
+                val pickedAddress by entry.savedStateHandle.getStateFlow<String?>("picked_address", null).collectAsState()
+                val pickedName by entry.savedStateHandle.getStateFlow<String?>("picked_name", null).collectAsState()
+                val pickedMeetupLocation = if (pickedLat != null && pickedLng != null && pickedAddress != null) {
+                    PickedLocation(pickedLat!!, pickedLng!!, pickedAddress!!, pickedName)
+                } else null
                 if (order != null) {
                     ReturnRequestScreen(
                         order = order,
@@ -643,6 +663,16 @@ fun GadgetMoverNavGraph() {
                         onFinished = {
                             scope.launch { OrderRepository.refreshFromRemote() }
                             navController.popBackStack()
+                        },
+                        pickedAddressId = pickedAddressId,
+                        onChangeAddress = { navController.navigate(Screen.SelectShippingAddress.route) },
+                        pickedMeetupLocation = pickedMeetupLocation,
+                        onPickMeetupLocation = {
+                            entry.savedStateHandle.remove<Double>("picked_lat")
+                            entry.savedStateHandle.remove<Double>("picked_lng")
+                            entry.savedStateHandle.remove<String>("picked_address")
+                            entry.savedStateHandle.remove<String>("picked_name")
+                            navController.navigate(Screen.LocationPicker.route)
                         }
                     )
                 }

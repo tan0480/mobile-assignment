@@ -23,6 +23,7 @@ import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.model.RentalOrder
 import com.example.gadgetmover.model.Review
+import com.example.gadgetmover.model.MeetupLocation
 import com.example.gadgetmover.model.ReturnMethod
 import com.example.gadgetmover.model.ReturnRequest
 import com.example.gadgetmover.model.ReturnRequestType
@@ -45,6 +46,7 @@ import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.storage.storage
 import io.ktor.client.call.body
 import java.time.Instant
@@ -82,7 +84,7 @@ object ProductRepository {
 
     private fun currentUserId(): String? = AuthRepository.currentUser.value?.id
 
-    /** Every listing except the current user's own and anything already SOLD — what Home/Explore/search should show, since a seller shouldn't be offered their own inventory to browse or buy, and a sold BUY/BOTH listing is gone (a `Product` is always exactly one physical unit). [products]/[myListings]/[getById] stay unfiltered for My Listings/editing/product-detail (which needs to load a sold product to render its "Sold" state). */
+    /** Every listing except the current user's own and anything already SOLD — what Home/Explore/search should show, since a seller shouldn't be offered their own inventory to browse or buy, and a sold BUY/BOTH listing is gone (a `Product` is always exactly one physical unit). [products]/[myListings]/[getById] stay unfiltered themselves — [getById] still needs to load a sold product for product-detail/order-detail to render its "Sold" state, and callers that want only active listings (e.g. `MyListingsScreen`) filter [myListings]'s result themselves. */
     val browsable: List<Product> get() = _products.filterNot { it.sellerId == currentUserId() || it.status == ProductStatus.SOLD }
 
     fun getById(id: String): Product? = _products.find { it.id == id }
@@ -1312,9 +1314,11 @@ object NotificationRepository {
      * Context. Only live while the app process is running: this can't wake the app from being
      * fully killed, unlike a real push service (Firebase Cloud Messaging) would. Safe to call
      * repeatedly — a second call for the same or a different user replaces the previous
-     * subscription instead of stacking another one.
+     * subscription instead of stacking another one. `suspend` (not fire-and-forget) so it can
+     * actually wait for [stopRealtimeListening] to finish tearing down any previous subscription
+     * before opening a new one — see that function's doc for why that matters.
      */
-    fun startRealtimeListening(userId: String, onNewNotification: (Notification) -> Unit) {
+    suspend fun startRealtimeListening(userId: String, onNewNotification: (Notification) -> Unit) {
         stopRealtimeListening()
         val channel = supabase.channel("notifications-$userId")
         val changeFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
@@ -1343,18 +1347,28 @@ object NotificationRepository {
         }
     }
 
-    /** Tears down the subscription started by [startRealtimeListening] — call on logout. */
-    fun stopRealtimeListening() {
+    /**
+     * Tears down the subscription started by [startRealtimeListening] — call on logout, or
+     * before re-subscribing for the same/a different user. `suspend`, and specifically calls
+     * [io.github.jan.supabase.realtime.Realtime.removeChannel] rather than the channel's own
+     * fire-and-forget `unsubscribe()`: `removeChannel` is what actually drops the channel out of
+     * the SDK's internal by-topic registry, which `supabase.channel("notifications-$userId")`
+     * looks up by that same topic string. Without waiting for that removal, a same-user restart
+     * (e.g. NavGraph's `LaunchedEffect(currentUserId)` re-running after the OS recreates the
+     * Activity — vivo/OriginOS in particular is aggressive about killing backgrounded ones) could
+     * get back the *old*, still-SUBSCRIBED channel object instead of a fresh one, and this SDK
+     * throws `IllegalStateException: You cannot call postgresChangeFlow after joining the
+     * channel` the moment [startRealtimeListening] tries to register a listener on it again.
+     */
+    suspend fun stopRealtimeListening() {
         realtimeJob?.cancel()
         realtimeJob = null
         val channel = realtimeChannel ?: return
         realtimeChannel = null
-        realtimeScope.launch {
-            try {
-                channel.unsubscribe()
-            } catch (e: Exception) {
-                // Already gone (connection dropped) — nothing to clean up.
-            }
+        try {
+            supabase.realtime.removeChannel(channel)
+        } catch (e: Exception) {
+            // Already gone (connection dropped) — nothing to clean up.
         }
     }
 }
@@ -1475,7 +1489,8 @@ object ReturnRequestRepository {
         @SerialName("p_refund_amount") val refundAmount: Double?,
         @SerialName("p_return_method") val returnMethod: String?,
         @SerialName("p_description") val description: String,
-        @SerialName("p_photo_urls") val photoUrls: List<String>
+        @SerialName("p_photo_urls") val photoUrls: List<String>,
+        @SerialName("p_meetup_location") val meetupLocation: MeetupLocation?
     )
 
     /** Calls `submit_return_request` — validated server-side (buyer only, order must be SHIPPED, max 2 attempts). Returns an error message on failure so the UI can show why (e.g. "already 2 attempts"). */
@@ -1487,7 +1502,8 @@ object ReturnRequestRepository {
         refundAmount: Double?,
         returnMethod: ReturnMethod?,
         description: String,
-        photoUrls: List<String>
+        photoUrls: List<String>,
+        meetupLocation: MeetupLocation?
     ): Result<Unit> {
         return try {
             supabase.postgrest.rpc(
@@ -1500,7 +1516,8 @@ object ReturnRequestRepository {
                     refundAmount = refundAmount,
                     returnMethod = returnMethod?.name,
                     description = description,
-                    photoUrls = photoUrls
+                    photoUrls = photoUrls,
+                    meetupLocation = meetupLocation
                 )
             )
             Result.success(Unit)
@@ -1513,13 +1530,37 @@ object ReturnRequestRepository {
     private data class DecideReturnRequestParams(
         @SerialName("p_request_id") val requestId: String,
         @SerialName("p_accept") val accept: Boolean,
-        @SerialName("p_rejection_reason") val rejectionReason: String?
+        @SerialName("p_rejection_reason") val rejectionReason: String?,
+        @SerialName("p_final_return_method") val finalReturnMethod: String? = null,
+        @SerialName("p_final_meetup_location") val finalMeetupLocation: MeetupLocation? = null,
+        @SerialName("p_final_return_receiver_name") val finalReturnReceiverName: String? = null,
+        @SerialName("p_final_return_phone_number") val finalReturnPhoneNumber: String? = null,
+        @SerialName("p_final_return_full_address") val finalReturnFullAddress: String? = null
     )
 
-    /** Calls `decide_return_request` — validated server-side (seller only, request must be PENDING); accepting/rejecting also advances the parent order's status and, when applicable, releases the refund. */
-    suspend fun decide(requestId: String, accept: Boolean, rejectionReason: String?): Boolean {
+    /** Calls `decide_return_request` — validated server-side (seller only, request must be PENDING); accepting/rejecting also advances the parent order's status and, when applicable, releases the refund. On accepting a RETURN, the seller's chosen [finalReturnMethod]/location or address land in the order's `checkout_details`, powering the existing "Ship Return"/"Confirm Return Received" flow. */
+    suspend fun decide(
+        requestId: String,
+        accept: Boolean,
+        rejectionReason: String?,
+        finalReturnMethod: ReturnMethod? = null,
+        finalMeetupLocation: MeetupLocation? = null,
+        finalReturnAddress: Address? = null
+    ): Boolean {
         return try {
-            supabase.postgrest.rpc("decide_return_request", DecideReturnRequestParams(requestId = requestId, accept = accept, rejectionReason = rejectionReason))
+            supabase.postgrest.rpc(
+                "decide_return_request",
+                DecideReturnRequestParams(
+                    requestId = requestId,
+                    accept = accept,
+                    rejectionReason = rejectionReason,
+                    finalReturnMethod = finalReturnMethod?.name,
+                    finalMeetupLocation = finalMeetupLocation,
+                    finalReturnReceiverName = finalReturnAddress?.receiverName,
+                    finalReturnPhoneNumber = finalReturnAddress?.phoneNumber,
+                    finalReturnFullAddress = finalReturnAddress?.fullAddress
+                )
+            )
             true
         } catch (e: Exception) {
             false
@@ -1567,7 +1608,11 @@ object WalletRepository {
     }
 
     @Serializable
-    private data class TopUpIntentRequest(val amount: Long, val currency: String = "myr")
+    private data class TopUpIntentRequest(
+        val amount: Long,
+        val currency: String = "myr",
+        @SerialName("customer_id") val customerId: String? = null
+    )
 
     @Serializable
     data class TopUpIntentInfo(
@@ -1575,9 +1620,9 @@ object WalletRepository {
         @SerialName("payment_intent_id") val paymentIntentId: String
     )
 
-    /** [amountCents] is RM × 100, matching [CheckoutRepository.createPaymentIntent]'s convention. Card-charge step 1 of "Add Funds" — see wallet-topup-intent Edge Function. */
-    suspend fun createTopUpIntent(amountCents: Long): Result<TopUpIntentInfo> = runCatching {
-        supabase.functions.invoke("wallet-topup-intent", body = TopUpIntentRequest(amount = amountCents)).body<TopUpIntentInfo>()
+    /** [amountCents] is RM × 100, matching [CheckoutRepository.createPaymentIntent]'s convention. [customerId], when non-null, attaches the charge to that Stripe Customer with `setup_future_usage` (same as checkout) so PaymentSheet can offer the buyer's already-saved cards here too — see wallet-topup-intent Edge Function. */
+    suspend fun createTopUpIntent(amountCents: Long, customerId: String? = null): Result<TopUpIntentInfo> = runCatching {
+        supabase.functions.invoke("wallet-topup-intent", body = TopUpIntentRequest(amount = amountCents, customerId = customerId)).body<TopUpIntentInfo>()
     }.onFailure { android.util.Log.e("WalletRepository", "createTopUpIntent($amountCents) failed", it) }
 
     @Serializable

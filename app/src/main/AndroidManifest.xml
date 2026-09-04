@@ -47,6 +47,19 @@
             android:name="com.stripe.android.paymentsheet.PaymentSheetActivity"
             android:windowSoftInputMode="adjustPan"
             tools:node="merge" />
+
+        <!-- Hands a content:// Uri to the system Camera app for the listing wizard's "Take Photo"
+             option (see ListingWizardScreen.kt's StepPhotos) — the Camera app can't write to a
+             plain file:// path on modern Android, so it needs this instead. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
