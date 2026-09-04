@@ -1,11 +1,12 @@
 package com.example.gadgetmover.model.filter
 
 /**
- * The Monitors advanced filter schema. "Video Interfaces & Port Count" nests a port-count choice
- * under each interface type (HDMI 2.1/2.0, DisplayPort 2.1/1.4a) — modeled as one field per
- * interface rather than a single combined field, since each has its own count options. The
- * remaining, non-nested interface entries (DP daisy-chain out, Thunderbolt, USB-C DP Alt Mode,
- * legacy VGA/DVI) live in [otherVideoInterfaces], whose selections gate [usbCPdWattage].
+ * The Monitors advanced filter schema. [videoPorts] replaces what used to be one fixed field per
+ * port generation (HDMI 2.1/2.0, DisplayPort 2.1/1.4a) plus a flat "Other Video Interfaces"
+ * checklist with a single repeatable "Add Port" builder against [VideoPortCatalog] — pick a port
+ * type first, then (listing mode only) how many; the system derives the total from the list
+ * instead of a separately-entered count. [usbCPdWattage] is gated on whichever port types were
+ * actually added, not a standalone toggle.
  */
 object MonitorFilterSchema {
 
@@ -18,16 +19,17 @@ object MonitorFilterSchema {
     private const val CURVED_ID = "curved"
     private const val MINI_LED_IPS_ID = "mini_led_ips"
     private const val MINI_LED_VA_ID = "mini_led_va"
-    private const val USB_C_ALT_MODE_ID = "full_featured_usb_c_displayport_alt_mode"
-    private const val THUNDERBOLT_ID = "thunderbolt_4_3_with_daisy_chain_in_out"
+    private val USB_C_PD_CAPABLE_PORT_IDS = setOf("usb_c_dp_alt_mode", "thunderbolt_3", "thunderbolt_4", "thunderbolt_5")
 
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "LG", "Samsung", "Dell", "ASUS", "Acer", "BenQ", "ViewSonic", "AOC", "MSI", "Gigabyte",
-            "Philips", "Sony", "Alienware", "Corsair", "InnoCN", "KTC", "Other"
+            "Acer", "AOC", "Apple", "ASRock", "ASUS", "BenQ", "Cooler Master", "Corsair", "Dell", "Dough",
+            "Eizo", "Gigabyte", "HKC", "HP", "Huawei", "Innocn", "Iiyama", "KTC", "Lenovo", "LG", "MSI",
+            "NEC", "NZXT", "Philips", "Pixio", "Prism+", "Samsung", "Sceptre", "Sharp", "Sony", "TCL",
+            "Titan Army", "ViewSonic", "Xiaomi", "Unknown"
         )
     )
 
@@ -36,14 +38,14 @@ object MonitorFilterSchema {
     val screenCurvature = FilterField(
         key = "screen_curvature",
         label = "Screen Curvature",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Flat", "Curved", "Other")
     )
 
     val curvatureRating = FilterField(
         key = "curvature_rating",
         label = "Curvature Rating",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("800R", "1000R", "1500R", "1800R", "Other"),
         visibleWhen = FieldDependency("screen_curvature", setOf(CURVED_ID))
     )
@@ -51,7 +53,7 @@ object MonitorFilterSchema {
     val aspectRatio = FilterField(
         key = "aspect_ratio",
         label = "Aspect Ratio",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "16:9 (Standard Widescreen)", "16:10 (Productivity)", "21:9 (Ultrawide)",
             "32:9 (Super Ultrawide)", "3:2", "Other"
@@ -69,7 +71,7 @@ object MonitorFilterSchema {
     val resolution = FilterField(
         key = "resolution",
         label = "Resolution",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "1920 × 1080 (FHD)", "1920 × 1200 (WUXGA)", "2560 × 1440 (QHD / 2K)", "2560 × 1600 (WQXGA)",
             "3440 × 1440 (UWQHD)", "3840 × 1600 (UW4K)", "3840 × 2160 (UHD / 4K)", "5120 × 1440 (Dual QHD)",
@@ -82,7 +84,7 @@ object MonitorFilterSchema {
     val panelType = FilterField(
         key = "panel_type",
         label = "Panel Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "QD-OLED", "WOLED", "Mini-LED IPS", "Mini-LED VA", "Fast IPS / Nano IPS",
             "Standard IPS", "Fast VA / HVA", "Standard VA", "TN", "Other"
@@ -121,8 +123,8 @@ object MonitorFilterSchema {
         label = "Variable Refresh Rate (VRR) / Sync Technology",
         type = FilterType.ChipGroup(isMultiSelect = true),
         options = options(
-            "NVIDIA G-Sync Ultimate", "NVIDIA G-Sync Compatible", "AMD FreeSync Premium Pro",
-            "AMD FreeSync Premium", "VESA Adaptive-Sync", "Other"
+            "None / Fixed Refresh Rate", "AMD FreeSync", "NVIDIA G-SYNC", "HDMI Forum VRR",
+            "Intel Adaptive Sync", "Unknown / Not Specified"
         )
     )
 
@@ -131,8 +133,11 @@ object MonitorFilterSchema {
     val colorDepth = FilterField(
         key = "color_depth",
         label = "Color Depth",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("8-bit", "8-bit + FRC (10-bit Simulated)", "True 10-bit", "12-bit", "Other")
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = options(
+            "6-bit", "6-bit + FRC", "8-bit", "8-bit + FRC (10-bit Simulated)", "True 10-bit", "12-bit",
+            "Unknown / Not Specified", "Other"
+        )
     )
 
     val srgbCoverage = FilterField(
@@ -156,8 +161,11 @@ object MonitorFilterSchema {
     val colorAccuracy = FilterField(
         key = "color_accuracy",
         label = "Color Accuracy (Delta E / ΔE)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("Factory Calibrated (ΔE < 2)", "Factory Calibrated (ΔE < 1)", "Uncalibrated", "Other")
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = options(
+            "Factory Calibrated — ΔE < 1", "Factory Calibrated — ΔE < 2", "Factory Calibrated — ΔE < 3",
+            "Factory Calibrated — ΔE Not Specified", "Not Factory Calibrated", "Unknown / Not Specified"
+        )
     )
 
     val hdrStandard = FilterField(
@@ -165,9 +173,10 @@ object MonitorFilterSchema {
         label = "HDR Standard & Certification",
         type = FilterType.ChipGroup(isMultiSelect = true),
         options = options(
-            "VESA DisplayHDR 400", "VESA DisplayHDR 600", "VESA DisplayHDR 1000", "VESA DisplayHDR 1400",
-            "VESA DisplayHDR True Black 400 (OLED)", "VESA DisplayHDR True Black 500 (OLED)",
-            "Dolby Vision", "Other"
+            "VESA DisplayHDR 400", "VESA DisplayHDR 500", "VESA DisplayHDR 600", "VESA DisplayHDR 1000",
+            "VESA DisplayHDR 1400", "VESA DisplayHDR True Black 400", "VESA DisplayHDR True Black 500",
+            "VESA DisplayHDR True Black 600", "VESA DisplayHDR True Black 1000", "VESA DisplayHDR True Black 1400",
+            "HDR Supported — Not Certified", "No HDR", "Unknown"
         )
     )
 
@@ -179,57 +188,20 @@ object MonitorFilterSchema {
 
     // --- Connectivity & I/O Ports ---
 
-    val hdmi21Ports = FilterField(
-        key = "hdmi_2_1_ports",
-        label = "HDMI 2.1 Ports (Full Bandwidth / eARC)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("1 × Port", "2 × Ports", "3 × Ports+")
+    /** Repeatable "Add Port" builder — a monitor's exact port mix (e.g. 2× HDMI 2.1 + 1× DisplayPort 1.4a) is described one entry at a time instead of a fixed field per port generation; see [VideoPortRequirement]. */
+    val videoPorts = FilterField(
+        key = "video_ports",
+        label = "Video Ports",
+        type = FilterType.VideoPortBuilder
     )
 
-    val hdmi20Ports = FilterField(
-        key = "hdmi_2_0_ports",
-        label = "HDMI 2.0 Ports",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("1 × Port", "2 × Ports", "3 × Ports+")
-    )
-
-    val displayPort21Ports = FilterField(
-        key = "displayport_2_1_ports",
-        label = "DisplayPort 2.1 Ports (UHBR10 / UHBR20)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("1 × Port", "2 × Ports")
-    )
-
-    val displayPort14aPorts = FilterField(
-        key = "displayport_1_4a_ports",
-        label = "DisplayPort 1.4a Ports",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("1 × Port", "2 × Ports", "3 × Ports+")
-    )
-
-    val otherVideoInterfaces = FilterField(
-        key = "other_video_interfaces",
-        label = "Other Video Interfaces",
-        type = FilterType.CheckboxList,
-        options = options(
-            "DisplayPort Out (Daisy Chain MST Support)", "Thunderbolt 4 / 3 (With Daisy Chain In/Out)",
-            "Full-Featured USB-C (DisplayPort Alt Mode)", "VGA / DVI (Legacy Ports)", "Other"
-        )
-    )
-
-    val totalVideoInputPorts = FilterField(
-        key = "total_video_input_ports",
-        label = "Total Video Input Ports Count",
-        type = FilterType.NumberRange(min = 1f, max = 6f, step = 1f, unit = " Ports", unitIsPrefix = false)
-    )
-
-    /** Only meaningful once the monitor actually has a USB-C Alt Mode or Thunderbolt input to carry power delivery. */
+    /** Only meaningful once the monitor actually has a USB-C Alt Mode or Thunderbolt port added to carry power delivery. */
     val usbCPdWattage = FilterField(
         key = "usb_c_pd_wattage",
         label = "USB-C Power Delivery (PD) Wattage",
         type = FilterType.ChipGroup(isMultiSelect = true),
         options = options("15W", "65W", "90W / 96W", "100W", "140W", "Other"),
-        visibleWhen = FieldDependency("other_video_interfaces", setOf(USB_C_ALT_MODE_ID, THUNDERBOLT_ID))
+        visibleWhen = FieldDependency("video_ports", USB_C_PD_CAPABLE_PORT_IDS)
     )
 
     val usbADownstreamPorts = FilterField(
@@ -250,7 +222,9 @@ object MonitorFilterSchema {
         type = FilterType.CheckboxList,
         options = options(
             "USB-B / USB-C Upstream (PC Data Link)", "3.5mm Audio Out (Headphone Jack)", "3.5mm Audio In (AUX)",
-            "Optical Audio Out (SPDIF)", "RJ-45 Ethernet Port (LAN Hub / Docking)", "Other"
+            "Optical Audio Out (SPDIF)", "RJ-45 Ethernet Port (LAN Hub / Docking)",
+            "Thunderbolt Upstream", "3.5 mm Headset Combo Jack", "SD Card Reader", "microSD Card Reader",
+            "RS-232 / Serial Control", "Other"
         )
     )
 
@@ -261,15 +235,25 @@ object MonitorFilterSchema {
         label = "Stand Adjustability",
         type = FilterType.ChipGroup(isMultiSelect = true),
         options = options(
-            "Height Adjustable", "Tilt Adjustment (-5° to +20°)", "Swivel Adjustment (Left / Right)",
-            "Pivot Adjustment (90° Vertical Rotation)", "Other"
+            "Fixed Stand / No Adjustment", "Height Adjustable", "Tilt Adjustable", "Swivel Adjustable",
+            "Pivot 90° Clockwise", "Pivot 90° Counterclockwise", "Pivot Both Directions",
+            "Landscape/Portrait Auto-Rotation", "Adjustable Monitor Arm Included",
+            "Foldable Stand / Kickstand", "Detachable Stand", "Other"
         )
+    )
+
+    /** Whether/how the monitor mounts on VESA hardware — distinct from [vesaMountSupport]'s specific hole-pattern size, which only matters once a monitor is VESA-mountable at all. */
+    val mounting = FilterField(
+        key = "mounting",
+        label = "Mounting",
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = options("Proprietary Mount", "VESA Adapter Required", "Not VESA Mountable", "Other")
     )
 
     val vesaMountSupport = FilterField(
         key = "vesa_mount_support",
         label = "VESA Wall Mount Support",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("VESA 75 × 75 mm", "VESA 100 × 100 mm", "Non-standard / Bracket Required", "Other")
     )
 
@@ -288,7 +272,7 @@ object MonitorFilterSchema {
     val builtInWebcam = FilterField(
         key = "built_in_webcam",
         label = "Built-in Webcam",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("1080p FHD Pop-up Webcam", "4K UHD Webcam", "Windows Hello IR Sensor", "No Webcam", "Other")
     )
 
@@ -305,14 +289,14 @@ object MonitorFilterSchema {
         )
     )
 
-    val advancedFeatures = FilterField(
-        key = "advanced_features",
-        label = "Advanced Features",
+    val features = FilterField(
+        key = "features",
+        label = "Features",
         type = FilterType.CheckboxList,
         options = options(
             "Built-in KVM Switch (One Keyboard/Mouse for 2 PCs)", "Picture-in-Picture (PiP) / Picture-by-Picture (PbP)",
             "OLED Anti-Burn-In Protection Suite", "Crosshair / Black Equalizer / Gaming OSD",
-            "Uniformity Compensation (For Color Grading)", "RGB Ambient Backlight (Ambiglow / LightSync)", "Other"
+            "Uniformity Compensation (For Color Grading)", "RGB Ambient Backlight (Ambiglow / LightSync)"
         )
     )
 
@@ -324,12 +308,11 @@ object MonitorFilterSchema {
             panelType, miniLedLocalDimmingZones, pixelResponseTimeGtg, pixelResponseTimeMprt,
             refreshRate, vrrSyncTechnology,
             colorDepth, srgbCoverage, dciP3Coverage, adobeRgbCoverage, colorAccuracy, hdrStandard, peakBrightness,
-            hdmi21Ports, hdmi20Ports, displayPort21Ports, displayPort14aPorts, otherVideoInterfaces,
-            totalVideoInputPorts, usbCPdWattage,
+            videoPorts, usbCPdWattage,
             usbADownstreamPorts, usbCDownstreamPorts, otherIoPorts,
-            standAdjustability, vesaMountSupport,
+            standAdjustability, mounting, vesaMountSupport,
             builtInSpeakers, builtInWebcam,
-            eyeCare, advancedFeatures
+            eyeCare, features
         )
     )
 }

@@ -1,6 +1,15 @@
 package com.example.gadgetmover.screen.profile
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,10 +17,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -21,6 +34,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -29,6 +43,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,15 +52,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.supabase
-import com.example.gadgetmover.screen.components.CreatePasswordDialog
+import com.example.gadgetmover.screen.components.AvatarCropDialog
 import com.example.gadgetmover.screen.components.PasswordConfirmDialog
 import com.example.gadgetmover.screen.components.PhoneNumberField
+import com.example.gadgetmover.screen.components.createCameraCaptureUri
+import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.util.isValidPhoneNumber
 import com.example.gadgetmover.util.parsePhoneNumber
 import io.github.jan.supabase.auth.user.Identity
@@ -68,6 +91,7 @@ import kotlinx.coroutines.launch
 fun AccountInfoScreen(
     onBackClick: () -> Unit,
     onChangePasswordClick: () -> Unit,
+    onCreatePasswordClick: () -> Unit,
     successMessage: String? = null,
     onSuccessMessageShown: () -> Unit = {}
 ) {
@@ -83,13 +107,39 @@ fun AccountInfoScreen(
     var checkingUserId by remember { mutableStateOf(false) }
     var showConfirmSave by remember { mutableStateOf(false) }
     var isSaving by rememberSaveable { mutableStateOf(false) }
-    var showCreatePassword by remember { mutableStateOf(false) }
     var googleIdentity by remember { mutableStateOf<Identity?>(null) }
     var showUnlinkGoogleConfirm by remember { mutableStateOf(false) }
     var unlinkingGoogle by remember { mutableStateOf(false) }
     var linkingGoogle by remember { mutableStateOf(false) }
+    var showAvatarSheet by remember { mutableStateOf(false) }
+    var avatarCropUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploadingAvatar by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    val pickAvatarFromGallery = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri -> if (uri != null) avatarCropUri = uri }
+
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    val takeAvatarPhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val uri = pendingCameraUri
+        pendingCameraUri = null
+        if (success && uri != null) avatarCropUri = uri
+    }
+
+    fun uploadAvatar(bytes: ByteArray) {
+        avatarCropUri = null
+        isUploadingAvatar = true
+        scope.launch {
+            val url = AuthRepository.uploadAvatar(bytes)
+            isUploadingAvatar = false
+            snackbarHostState.showSnackbar(if (url != null) "Profile photo updated" else "Couldn't update your photo. Please try again.")
+        }
+    }
 
     suspend fun refreshGoogleIdentity() {
         googleIdentity = AuthRepository.currentIdentities().firstOrNull { it.provider == "google" }
@@ -182,6 +232,13 @@ fun AccountInfoScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
+            AvatarEditor(
+                avatarUrl = currentUser.avatarUrl,
+                isUploading = isUploadingAvatar,
+                onClick = { showAvatarSheet = true }
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
             if (!currentUser.hasPassword) {
                 Text(
                     "Create a password below first to edit your profile.",
@@ -281,7 +338,7 @@ fun AccountInfoScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(onClick = { showCreatePassword = true }, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onCreatePasswordClick, modifier = Modifier.fillMaxWidth()) {
                     Text("Create Password")
                 }
             }
@@ -334,6 +391,30 @@ fun AccountInfoScreen(
         }
     }
 
+    if (showAvatarSheet) {
+        AvatarPickerSheet(
+            onDismiss = { showAvatarSheet = false },
+            onTakePhoto = {
+                showAvatarSheet = false
+                val uri = createCameraCaptureUri(context, "avatar_photos")
+                pendingCameraUri = uri
+                takeAvatarPhoto.launch(uri)
+            },
+            onChooseFromGallery = {
+                showAvatarSheet = false
+                pickAvatarFromGallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
+        )
+    }
+
+    avatarCropUri?.let { uri ->
+        AvatarCropDialog(
+            sourceUri = uri,
+            onCancel = { avatarCropUri = null },
+            onCropped = { bytes -> uploadAvatar(bytes) }
+        )
+    }
+
     if (showConfirmSave) {
         PasswordConfirmDialog(
             title = "Confirm it's you",
@@ -352,20 +433,6 @@ fun AccountInfoScreen(
                     }
                     isSaving = false
                     snackbarHostState.showSnackbar(if (success) "Profile updated" else "Couldn't save changes. Please try again.")
-                }
-            }
-        )
-    }
-
-    if (showCreatePassword) {
-        CreatePasswordDialog(
-            onDismiss = { showCreatePassword = false },
-            onCreated = {
-                showCreatePassword = false
-                scope.launch {
-                    AuthRepository.refreshCurrentUser()
-                    refreshGoogleIdentity()
-                    snackbarHostState.showSnackbar("Password created")
                 }
             }
         )
@@ -419,5 +486,95 @@ private fun LabeledField(label: String, field: @Composable () -> Unit) {
         Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(8.dp))
         field()
+    }
+}
+
+/** Centered circular avatar with a camera badge overlapping its bottom-right corner — tapping either opens [AvatarPickerSheet]. Shows a dimming overlay + spinner in place of the badge while [isUploading]. */
+@Composable
+private fun AvatarEditor(avatarUrl: String, isUploading: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .clip(CircleShape)
+                .clickable(enabled = !isUploading, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            if (avatarUrl.isNotBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = "Profile photo",
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(BrandBlueDark.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = BrandBlueDark, modifier = Modifier.size(44.dp))
+                }
+            }
+            if (isUploading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), color = Color.White, strokeWidth = 2.dp)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.CameraAlt, contentDescription = "Change photo", tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+/** "Take Photo" / "Choose from Gallery" bottom sheet — the entry point for both the avatar itself and its camera badge in [AvatarEditor]. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AvatarPickerSheet(onDismiss: () -> Unit, onTakePhoto: () -> Unit, onChooseFromGallery: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
+        Column(modifier = Modifier.padding(bottom = 20.dp)) {
+            Text(
+                "Update Profile Photo",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+            AvatarPickerOption(icon = Icons.Filled.CameraAlt, label = "Take Photo", onClick = onTakePhoto)
+            AvatarPickerOption(icon = Icons.Filled.PhotoLibrary, label = "Choose from Gallery", onClick = onChooseFromGallery)
+        }
+    }
+}
+
+@Composable
+private fun AvatarPickerOption(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }

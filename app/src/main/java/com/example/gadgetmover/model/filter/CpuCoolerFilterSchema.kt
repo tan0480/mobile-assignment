@@ -18,17 +18,18 @@ object CpuCoolerFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Noctua", "be quiet!", "Cooler Master", "NZXT", "Corsair", "Arctic",
-            "Deepcool", "Thermalright", "ID-Cooling", "Scythe", "Other"
+            "Noctua", "Thermalright", "ARCTIC", "be quiet!", "Corsair", "NZXT", "Cooler Master",
+            "DeepCool", "Lian Li", "ASUS (ROG / TUF)", "MSI", "Gigabyte (Aorus)", "ID-COOLING",
+            "Scythe", "EKWB", "Phanteks", "Thermaltake", "Razer", "Jonsbo", "Vetroo", "Unknown"
         )
     )
 
     val coolerType = FilterField(
         key = "cooler_type",
         label = "Cooler Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Air Cooler", "AIO Liquid Cooler", "Custom Loop", "Other")
     )
 
@@ -61,17 +62,17 @@ object CpuCoolerFilterSchema {
         visibleWhen = liquidCoolerDependency
     )
 
+    val fanThickness = FilterField(
+        key = "fan_thickness",
+        label = "Fan Thickness",
+        type = FilterType.NumberRange(min = 10f, max = 30f, step = 1f, unit = "mm", unitIsPrefix = false),
+        visibleWhen = liquidCoolerDependency
+    )
+
     val warrantyYears = FilterField(
         key = "warranty_years",
         label = "Warranty Period",
         type = FilterType.NumberRange(min = 1f, max = 10f, step = 1f, unit = " Years", unitIsPrefix = false),
-        visibleWhen = liquidCoolerDependency
-    )
-
-    val leakDamageCoverage = FilterField(
-        key = "leak_damage_coverage",
-        label = "Full System Leak Damage Coverage",
-        type = FilterType.SwitchToggle(label = "Includes full system leak damage compensation"),
         visibleWhen = liquidCoolerDependency
     )
 
@@ -85,7 +86,7 @@ object CpuCoolerFilterSchema {
         key = "socket_compatibility",
         label = "Socket Compatibility",
         type = FilterType.CheckboxList,
-        options = options(*PcSocketOptions.labels)
+        options = PcSocketOptions.options
     )
 
     val tdpRating = FilterField(
@@ -104,14 +105,14 @@ object CpuCoolerFilterSchema {
         key = "features",
         label = "Features",
         type = FilterType.CheckboxList,
-        options = options("RGB / ARGB Lighting", "LCD Display", "Low-Profile (SFF Compatible)", "PWM Control", "Other")
+        options = options("RGB / ARGB Lighting", "LCD Display", "Low-Profile (SFF Compatible)", "PWM Control", "Full System Leak Damage Coverage")
     )
 
     val schema = CategoryFilterSchema(
         sections = listOf(
             brand, coolerType,
             radiatorSize, heatPipeCount, heatPipeDiameter,
-            radiatorThickness, warrantyYears, leakDamageCoverage,
+            radiatorThickness, fanThickness, warrantyYears,
             fanSize, socketCompatibility, tdpRating, noiseLevel,
             features
         )

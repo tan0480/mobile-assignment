@@ -4,7 +4,7 @@ package com.example.gadgetmover.model.filter
  * The Smartphones advanced filter schema. Its rear-camera section reuses [CameraSystemFields]
  * (shared with [TabletFilterSchema], per spec), and its Bluetooth-version gating reuses
  * [MobileDeviceSharedFields]. PPS-only (no USB-PD) fast charging, per-Phone charger/box-included
- * fields, and the 3.5mm headphone jack (folded into [hardwareFeatures]) intentionally diverge from
+ * fields, and the 3.5mm headphone jack (folded into [features]) intentionally diverge from
  * [MobileDeviceSharedFields]'s shared defaults, so this schema keeps its own local copies of those
  * rather than the shared ones Tablets still use.
  */
@@ -26,10 +26,14 @@ object PhoneFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Apple", "Samsung", "Xiaomi", "Huawei", "OPPO", "vivo", "OnePlus", "Google Pixel", "Honor",
-            "Sony", "Motorola", "Nothing", "Realme", "ASUS ROG Phone", "Sharp", "Meizu", "Other"
+            "Acer", "Alcatel", "Apple", "ASUS", "BlackBerry", "Blackview", "BLU", "Cat", "CMF", "Coolpad",
+            "Cubot", "Doogee", "Fairphone", "Google", "HMD", "Honor", "Huawei", "Infinix", "Itel", "Lava",
+            "Lenovo", "LG", "Meizu", "Micromax", "Microsoft", "Motorola", "Nokia", "Nothing", "Nubia",
+            "OnePlus", "Oppo", "Oukitel", "Panasonic", "Poco", "Razer", "Realme", "RedMagic", "Redmi",
+            "Samsung", "Sharp", "Sony", "TCL", "Tecno", "Ulefone", "Umidigi", "Vivo", "Wiko", "Xiaomi",
+            "ZTE", "Unknown"
         )
     )
 
@@ -38,7 +42,7 @@ object PhoneFilterSchema {
     val formFactor = FilterField(
         key = "form_factor",
         label = "Form Factor",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Standard", "Horizontal Foldable", "Vertical Foldable", "Tri-Foldable", "Other")
     )
 
@@ -83,21 +87,21 @@ object PhoneFilterSchema {
     val panelType = FilterField(
         key = "panel_type",
         label = "Panel Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("LTPO OLED", "OLED", "AMOLED", "LCD", "Other")
     )
 
     val resolution = FilterField(
         key = "resolution",
         label = "Resolution",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("1080p (FHD / FHD+)", "1.5K (1220p / 1264p)", "2K (QHD+ / 1440p)", "4K (2160p)", "Other")
     )
 
     val refreshRate = FilterField(
         key = "refresh_rate",
         label = "Refresh Rate",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("60Hz", "90Hz", "120Hz", "144Hz", "165Hz", "Other")
     )
 
@@ -116,7 +120,7 @@ object PhoneFilterSchema {
     val screenGlassProtection = FilterField(
         key = "screen_glass_protection",
         label = "Screen Glass Protection",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Corning Gorilla Armor", "Corning Gorilla Glass Victus 2 / Victus", "Kunlun Glass", "Ceramic Shield", "Other"
         )
@@ -134,7 +138,7 @@ object PhoneFilterSchema {
     val coverPanelType = FilterField(
         key = "cover_panel_type",
         label = "Cover Display Panel Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("LTPO OLED", "OLED", "AMOLED", "LCD", "Other"),
         visibleWhen = foldableDependency
     )
@@ -142,7 +146,7 @@ object PhoneFilterSchema {
     val coverResolution = FilterField(
         key = "cover_resolution",
         label = "Cover Display Resolution",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("FHD / FHD+", "1.5K", "2K", "Other"),
         visibleWhen = foldableDependency
     )
@@ -174,15 +178,24 @@ object PhoneFilterSchema {
     val operatingSystem = FilterField(
         key = "operating_system",
         label = "Operating System",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Android", "iOS", "HarmonyOS (HarmonyOS NEXT)", "Other")
     )
 
     private val osVersionsByOs: Map<String, List<FilterOption>> = mapOf(
-        "android" to options("Android 16", "Android 15", "Android 14", "Android 13", "Android 12", "Android 11", "Other"),
-        "ios" to options("iOS 26", "iOS 18", "iOS 17", "iOS 16", "iOS 15", "Other"),
-        "harmonyos_harmonyos_next" to options("HarmonyOS NEXT 5.1", "HarmonyOS NEXT 5.0", "HarmonyOS 4", "HarmonyOS 3", "Other"),
-        "other" to options("Other")
+        "android" to options(
+            "Android 7.0 Nougat", "Android 7.1 Nougat", "Android 8.0 Oreo", "Android 8.1 Oreo", "Android 9 Pie",
+            "Android 10", "Android 11", "Android 12", "Android 12L", "Android 13", "Android 14", "Android 15",
+            "Android 16", "Android 17"
+        ),
+        "ios" to options(
+            "iOS 10", "iOS 11", "iOS 12", "iOS 13", "iOS 14", "iOS 15", "iOS 16", "iOS 17", "iOS 18", "iOS 26"
+        ),
+        "harmonyos_harmonyos_next" to options(
+            "HarmonyOS 1", "HarmonyOS 2", "HarmonyOS 3", "HarmonyOS 4", "HarmonyOS 4.2", "HarmonyOS 5",
+            "HarmonyOS NEXT 5", "HarmonyOS NEXT 6"
+        ),
+        "other" to emptyList()
     )
 
     /** Styled and dynamically filtered the same way [socModel] narrows to [socBrand]: pick an OS above and this narrows to just that OS's versions. */
@@ -192,7 +205,7 @@ object PhoneFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = osVersionsByOs.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedOsIds = (state.valueFor("operating_system") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedOsIds = selectedIdsFor(state, "operating_system")
             val matched = selectedOsIds.flatMap { osVersionsByOs[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { osVersionsByOs.values.flatten().distinctBy { it.id } }
         }
@@ -201,28 +214,22 @@ object PhoneFilterSchema {
     val socBrand = FilterField(
         key = "soc_brand",
         label = "SoC Brand",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Qualcomm Snapdragon", "Apple A-Series", "MediaTek Dimensity",
             "Google Tensor", "Huawei Kirin", "Samsung Exynos", "Other"
         )
     )
 
+    /** Shared with [TabletFilterSchema.socModel] — see [SocModelCatalog]. */
     private val socModelsByBrand: Map<String, List<FilterOption>> = mapOf(
-        "qualcomm_snapdragon" to options(
-            "Snapdragon 8 Elite", "Snapdragon 8 Gen 3 / 8 Gen 3 Leading Version",
-            "Snapdragon 8s Gen 3", "Snapdragon 8 Gen 2",
-            "Snapdragon 7+ Gen 3 / 7+ Gen 2", "Snapdragon 7 Gen 3"
-        ),
-        "apple_a_series" to options("Apple A18 Pro / A18", "Apple A17 Pro", "Apple A16 Bionic", "Apple A15 Bionic"),
-        "mediatek_dimensity" to options(
-            "Dimensity 9400", "Dimensity 9300+ / 9300", "Dimensity 9200+ / 9200",
-            "Dimensity 8300-Ultra / 8300", "Dimensity 8200"
-        ),
-        "google_tensor" to options("Tensor G4 / G3"),
-        "huawei_kirin" to options("Kirin 9010 / 9000S"),
-        "samsung_exynos" to options("Exynos 2400"),
-        "other" to options("Other")
+        "qualcomm_snapdragon" to SocModelCatalog.qualcommSnapdragon,
+        "apple_a_series" to SocModelCatalog.appleASeries,
+        "mediatek_dimensity" to SocModelCatalog.mediatekDimensity,
+        "google_tensor" to SocModelCatalog.googleTensor,
+        "huawei_kirin" to SocModelCatalog.huaweiKirin,
+        "samsung_exynos" to SocModelCatalog.samsungExynos,
+        "other" to emptyList()
     )
 
     /** Narrows to just the picked [socBrand]'s chips, e.g. selecting Apple here only ever pops up Apple's own SoC models. */
@@ -232,7 +239,7 @@ object PhoneFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = socModelsByBrand.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedBrandIds = (state.valueFor("soc_brand") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedBrandIds = selectedIdsFor(state, "soc_brand")
             val matched = selectedBrandIds.flatMap { socModelsByBrand[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { socModelsByBrand.values.flatten().distinctBy { it.id } }
         }
@@ -243,14 +250,14 @@ object PhoneFilterSchema {
     val ramCapacity = FilterField(
         key = "ram_capacity",
         label = "RAM Capacity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("4GB", "6GB", "8GB", "12GB", "16GB", "24GB", "Other")
     )
 
     val internalStorage = FilterField(
         key = "internal_storage",
         label = "Internal Storage (ROM)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("32GB", "64GB", "128GB", "256GB", "512GB", "1TB", "2TB", "Other")
     )
 
@@ -259,7 +266,7 @@ object PhoneFilterSchema {
     val cameraOpticsCoBranding = FilterField(
         key = "camera_optics_co_branding",
         label = "Camera Optics Co-branding",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Hasselblad", "Leica", "ZEISS", "XMAGE", "Other")
     )
 
@@ -309,28 +316,6 @@ object PhoneFilterSchema {
         visibleWhen = wirelessChargingDependency
     )
 
-    val magneticWirelessCharging = FilterField(
-        key = "magnetic_wireless_charging",
-        label = "Magnetic Wireless Charging (Qi2 / MagSafe)",
-        type = FilterType.SwitchToggle(label = "Magnetic Wireless Charging (Qi2 / MagSafe)"),
-        visibleWhen = wirelessChargingDependency
-    )
-
-    /** Phone-local, shortened from the shared "Charger Included in Box" — paired with [boxIncluded] as its own separate question instead of bundling both into one label. */
-    val chargerIncluded = FilterField(
-        key = "charger_included",
-        label = "Charger Included",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
-    )
-
-    val boxIncluded = FilterField(
-        key = "box_included",
-        label = "Box Included",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
-    )
-
     // --- Speakers ---
 
     private const val SINGLE_SPEAKER_ID = "single_speaker"
@@ -367,8 +352,7 @@ object PhoneFilterSchema {
         "Knowles 1216 High Output", "Knowles 1014 Dynamic Speaker", "Knowles 0916 Low Profile",
         "BestTechnic BES-SPK 1115", "BestTechnic BES-SPK 1216",
         "Foster Electric 1115 Micro Dynamic", "Foster Electric 1216 Micro Dynamic", "Foster Electric 1012 Receiver Hybrid",
-        "Hosiden 1115 Ultra Linear", "Hosiden 1216 Ultra Linear", "Hosiden 1014 Slim Dynamic",
-        "Other"
+        "Hosiden 1115 Ultra Linear", "Hosiden 1216 Ultra Linear", "Hosiden 1014 Slim Dynamic"
     )
 
     private val singleSpeakerDependency = FieldDependency("speaker_system_configuration", setOf(SINGLE_SPEAKER_ID))
@@ -443,8 +427,7 @@ object PhoneFilterSchema {
             "Bluecom LRA 0809", "Bluecom LRA 0815", "Bluecom LRA 0916",
             "Johnson Electric X-Axis LRA 0815", "Johnson Electric X-Axis LRA 0916",
             "Apple Taptic Engine (Custom X-Axis LRA 1206)", "Apple Taptic Engine (Custom X-Axis LRA 1307)",
-            "Apple Taptic Engine (Custom X-Axis LRA 1408)", "Apple Taptic Engine (Custom X-Axis LRA 1508)",
-            "Other"
+            "Apple Taptic Engine (Custom X-Axis LRA 1408)", "Apple Taptic Engine (Custom X-Axis LRA 1508)"
         ),
         visibleWhen = FieldDependency("motor_type", setOf(X_AXIS_ID))
     )
@@ -458,8 +441,7 @@ object PhoneFilterSchema {
             "Goertek Z-Axis 0825", "Goertek Z-Axis 0832", "Goertek Z-Axis 1027", "Goertek Z-Axis 1030",
             "Nidec Sprinter D 0825", "Nidec Sprinter D 0832", "Nidec Sprinter D 0834",
             "Nidec Sprinter A 1027", "Nidec Sprinter A 1030",
-            "Bluecom Z-Axis 0832", "Bluecom Z-Axis 1027", "Johnson Electric Z-Axis LRA 0832",
-            "Other"
+            "Bluecom Z-Axis 0832", "Bluecom Z-Axis 1027", "Johnson Electric Z-Axis LRA 0832"
         ),
         visibleWhen = FieldDependency("motor_type", setOf(Z_AXIS_ID))
     )
@@ -476,7 +458,7 @@ object PhoneFilterSchema {
     val simSlots = FilterField(
         key = "sim_slots",
         label = "SIM Slots",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Dual Physical Nano-SIM", "Single Nano-SIM + eSIM", "Dual eSIM", "Other")
     )
 
@@ -492,14 +474,14 @@ object PhoneFilterSchema {
     val wifiStandard = FilterField(
         key = "wifi_standard",
         label = "Wi-Fi Standard",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Wi-Fi 7", "Wi-Fi 6E", "Wi-Fi 6", "Wi-Fi 5", "Other")
     )
 
     val usbCInterface = FilterField(
         key = "usb_c_interface",
         label = "USB-C Interface",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "USB 3.2 Gen 2 (10Gbps / DisplayPort Out)", "USB 3.2 Gen 1 (5Gbps)", "USB 2.0 (480Mbps)", "Other"
         )
@@ -510,7 +492,7 @@ object PhoneFilterSchema {
     val fingerprintScanner = FilterField(
         key = "fingerprint_scanner",
         label = "Fingerprint Scanner",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "3D Ultrasonic Single-Point Under-Display", "3D Ultrasonic Wide-Area Under-Display",
             "Ultra-Thin Optical Under-Display", "Short-Focus Optical Under-Display",
@@ -521,28 +503,25 @@ object PhoneFilterSchema {
     val facialRecognition = FilterField(
         key = "facial_recognition",
         label = "Facial Recognition",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("3D Structured Light", "ToF", "2D Camera", "Other")
     )
 
-    val ipRating = FilterField(
-        key = "ip_rating",
-        label = "IP Rating",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("IP69", "IP68", "IP65", "IP54", "Other")
-    )
+    /** Shared with every other category that carries this field — see [IpRatingFields]. */
+    val ipRating = IpRatingFields.ipRating
 
-    // --- Hardware Features ---
+    // --- Features ---
 
-    val hardwareFeatures = FilterField(
-        key = "hardware_features",
-        label = "Hardware Features",
+    val features = FilterField(
+        key = "features",
+        label = "Features",
         type = FilterType.CheckboxList,
         options = options(
             "3.5mm Headphone Jack", "Reverse Wireless Charging Support", "Expandable Storage Supported", "Dual Motor",
             "Under-Display Front Camera",
             "Bypass Charging", "Built-in Privacy Screen Filter", "Infrared Blaster", "Full-Featured NFC",
-            "Physical Alert Slider / Custom Action Button", "Dedicated Camera Shutter Key", "Other"
+            "Physical Alert Slider / Custom Action Button", "Dedicated Camera Shutter Key",
+            "Magnetic Wireless Charging (Qi2 / MagSafe)", "Charger Included", "Box Included"
         )
     )
 
@@ -557,8 +536,7 @@ object PhoneFilterSchema {
         ) + CameraSystemFields.fields + listOf(
             cameraOpticsCoBranding, cameraFeatures,
             batteryCapacity, wiredFastChargingMaxWattage, ppsSupportedWattage,
-            wirelessChargingSupported, wirelessChargingWattage, magneticWirelessCharging,
-            chargerIncluded, boxIncluded,
+            wirelessChargingSupported, wirelessChargingWattage,
             speakerSystemConfiguration, speakerModel, speakerModelTop, speakerModelBottom,
             speakerModel1, speakerModel2, speakerModel3, speakerModel4,
             motorType, motorModelXAxis, motorModelZAxis,
@@ -566,7 +544,7 @@ object PhoneFilterSchema {
         ) + MobileDeviceSharedFields.bluetoothFields + listOf(
             usbCInterface,
             fingerprintScanner, facialRecognition, ipRating,
-            hardwareFeatures
+            features
         )
     )
 }

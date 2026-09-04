@@ -53,7 +53,7 @@ fun BrowseHistoryScreen(
                 title = { Text("Browse History") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -70,7 +70,7 @@ fun BrowseHistoryScreen(
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.History, // TODO: swap with custom ImageVector
+                        Icons.Filled.History,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant

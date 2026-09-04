@@ -71,6 +71,7 @@ import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.model.User
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.LoginRequiredDialog
+import com.example.gadgetmover.screen.components.UserAvatar
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.BrandOrange
@@ -119,7 +120,11 @@ fun ProfileScreen(
         if (isLoggedIn) refreshProfile()
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         ProfileTopBar(
             onSettingsClick = { requireLogin { onQuickActionClick(ProfileQuickAction.SETTINGS) } }
         )
@@ -159,28 +164,28 @@ fun ProfileScreen(
             Card(shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(4.dp)) {
                 Column {
                     AccountSupportRow(
-                        icon = Icons.Filled.CreditCard, // TODO: swap with custom ImageVector
+                        icon = Icons.Filled.CreditCard,
                         tint = MaterialTheme.colorScheme.primary,
                         title = "Payment methods",
                         subtitle = "Cards and wallet",
                         onClick = { requireLogin { onAccountSupportClick(AccountSupportAction.PAYMENT_METHODS) } }
                     )
                     AccountSupportRow(
-                        icon = Icons.Filled.LocationOn, // TODO: swap with custom ImageVector
+                        icon = Icons.Filled.LocationOn,
                         tint = MaterialTheme.colorScheme.primary,
                         title = "Shipping address",
                         subtitle = "Manage pickup addresses",
                         onClick = { requireLogin { onAccountSupportClick(AccountSupportAction.SHIPPING_ADDRESS) } }
                     )
                     AccountSupportRow(
-                        icon = Icons.Filled.Analytics, // TODO: swap with custom ImageVector
+                        icon = Icons.Filled.Analytics,
                         tint = MaterialTheme.colorScheme.primary,
                         title = "Analytics",
                         subtitle = "Your listing performance",
                         onClick = { requireLogin { onQuickActionClick(ProfileQuickAction.ANALYTICS) } }
                     )
                     AccountSupportRow(
-                        icon = Icons.AutoMirrored.Filled.HelpOutline, // TODO: swap with custom ImageVector
+                        icon = Icons.AutoMirrored.Filled.HelpOutline,
                         tint = MaterialTheme.colorScheme.primary,
                         title = "Help centre",
                         subtitle = "FAQs and contact support",
@@ -189,7 +194,7 @@ fun ProfileScreen(
                     )
                     if (isLoggedIn) {
                         AccountSupportRow(
-                            icon = Icons.AutoMirrored.Filled.Logout, // TODO: swap with custom ImageVector
+                            icon = Icons.AutoMirrored.Filled.Logout,
                             tint = MaterialTheme.colorScheme.error,
                             title = "Log out",
                             subtitle = "Sign out of your account",
@@ -246,7 +251,7 @@ private fun ProfileTopBar(onSettingsClick: () -> Unit) {
             modifier = Modifier.weight(1f)
         )
         TopBarIconButton(
-            icon = Icons.Filled.Settings, // TODO: swap with custom ImageVector
+            icon = Icons.Filled.Settings,
             contentDescription = "Settings",
             onClick = onSettingsClick
         )
@@ -282,20 +287,14 @@ private fun ProfileHeaderCard(
     ) {
         if (isLoggedIn && user != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(AccentLime),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        user.name.take(1).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandBlueDark
-                    )
-                }
+                UserAvatar(
+                    avatarUrl = user.avatarUrl,
+                    displayName = user.name,
+                    modifier = Modifier.size(56.dp),
+                    fallbackBackground = AccentLime,
+                    fallbackContentColor = BrandBlueDark,
+                    contentDescription = "Your profile photo"
+                )
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -308,7 +307,7 @@ private fun ProfileHeaderCard(
                         if (user.isVerified) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
-                                Icons.Filled.CheckCircle, // TODO: swap with custom ImageVector
+                                Icons.Filled.CheckCircle,
                                 contentDescription = "Verified",
                                 tint = AccentLime,
                                 modifier = Modifier.size(18.dp)
@@ -333,7 +332,7 @@ private fun ProfileHeaderCard(
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            Icons.Filled.Star, // TODO: swap with custom ImageVector
+                            Icons.Filled.Star,
                             contentDescription = null,
                             tint = AccentLime,
                             modifier = Modifier.size(14.dp)
@@ -358,7 +357,7 @@ private fun ProfileHeaderCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.AccountCircle, // TODO: swap with custom ImageVector
+                        Icons.Filled.AccountCircle,
                         contentDescription = "Guest",
                         tint = Color.White.copy(alpha = 0.9f),
                         modifier = Modifier.size(38.dp)
@@ -423,8 +422,8 @@ private fun MarketplaceGrid(onQuickActionClick: (ProfileQuickAction) -> Unit) {
     val reviewCount = currentUser?.ratingCount ?: 0
     val walletBalance = WalletRepository.balance.value
 
-    // Icons below are Material placeholders — swap each with your own ImageVector
-    // (e.g. from Google Fonts / Material Symbols) whenever you're ready.
+    // Use the Material icon set for the profile quick actions so the grid has a consistent
+    // visual language across the app.
     val items = listOf(
         MarketplaceItem(ProfileQuickAction.MY_LISTINGS, Icons.Filled.Add, Color(0xFF7C3AED), "My listings", "$myListingsCount active"),
         MarketplaceItem(ProfileQuickAction.PURCHASES, Icons.Filled.ShoppingBag, BrandOrange, "Purchases", "$purchasesCount items"),
@@ -517,7 +516,7 @@ private fun AccountSupportRow(
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(
-                Icons.Filled.ChevronRight, // TODO: swap with custom ImageVector
+                Icons.Filled.ChevronRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )

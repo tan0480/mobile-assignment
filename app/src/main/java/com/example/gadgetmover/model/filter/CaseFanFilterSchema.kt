@@ -12,25 +12,46 @@ object CaseFanFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Noctua", "Corsair", "NZXT", "Lian Li", "be quiet!", "Arctic",
-            "Thermaltake", "Cooler Master", "Deepcool", "Other"
+            "Aerocool", "Akasa", "Alphacool", "Antec", "Arctic", "ASUS", "be quiet!", "BitFenix",
+            "Cooler Master", "Corsair", "Cougar", "Cryorig", "DarkFlash", "DeepCool", "Delta Electronics",
+            "EK", "Enermax", "Fractal Design", "G.Skill", "Gamdias", "Gelid Solutions", "Gigabyte Aorus",
+            "Hyte", "ID-Cooling", "InWin", "Jonsbo", "Lian Li", "Montech", "MSI", "Nidec", "Noctua",
+            "Noiseblocker", "NZXT", "Phanteks", "Prolimatech", "Raijintek", "Reeven", "Rosewill", "Scythe",
+            "SilverStone", "Super Flower", "Thermalright", "Thermaltake", "upHere", "Xigmatek", "Zalman",
+            "Unknown"
         )
     )
 
     val fanSize = FilterField(
         key = "fan_size",
         label = "Fan Size",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("80mm", "92mm", "120mm", "140mm", "200mm", "Other")
+    )
+
+    val fanThickness = FilterField(
+        key = "fan_thickness",
+        label = "Fan Thickness",
+        type = FilterType.NumberRange(min = 10f, max = 30f, step = 1f, unit = "mm", unitIsPrefix = false)
+    )
+
+    val fanSpeed = FilterField(
+        key = "fan_speed",
+        label = "Fan Speed",
+        type = FilterType.NumberRange(min = 200f, max = 3000f, step = 100f, unit = " RPM", unitIsPrefix = false)
     )
 
     val bearingType = FilterField(
         key = "bearing_type",
         label = "Bearing Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("Fluid Dynamic Bearing (FDB)", "Ball Bearing", "Magnetic Levitation (Maglev)", "Sleeve Bearing", "Other")
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = options(
+            "Fluid Dynamic Bearing (FDB)", "Ball Bearing", "Magnetic Levitation (Maglev)", "Sleeve Bearing",
+            "Rifle Bearing", "Hydro-Dynamic Bearing (HDB)", "Single Ball Bearing", "Dual Ball Bearing",
+            "Vapo / Z-Axis Bearing", "Other"
+        )
     )
 
     val airflow = FilterField(
@@ -55,13 +76,13 @@ object CaseFanFilterSchema {
         key = "features",
         label = "Features",
         type = FilterType.CheckboxList,
-        options = options("RGB / ARGB Lighting", "PWM Control (4-Pin)", "Daisy-Chainable", "Anti-Vibration Pads", "Other")
+        options = options("RGB / ARGB Lighting", "PWM Control (4-Pin)", "Daisy-Chainable", "Anti-Vibration Pads")
     )
 
     val schema = CategoryFilterSchema(
         sections = listOf(
-            brand, fanSize, bearingType,
-            airflow, staticPressure, noiseLevel,
+            brand, fanSize, fanThickness, bearingType,
+            airflow, staticPressure, fanSpeed, noiseLevel,
             features
         )
     )

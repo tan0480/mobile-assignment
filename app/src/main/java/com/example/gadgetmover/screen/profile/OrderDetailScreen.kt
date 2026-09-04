@@ -1,6 +1,7 @@
 package com.example.gadgetmover.screen.profile
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -55,10 +57,12 @@ import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.OrderRepository
 import com.example.gadgetmover.data.ReviewRepository
 import com.example.gadgetmover.model.BuyOrder
+import com.example.gadgetmover.model.DepositStatus
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.Order
 import com.example.gadgetmover.model.OrderStatus
 import com.example.gadgetmover.model.RentalOrder
+import com.example.gadgetmover.model.isHolding
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.ui.theme.WarningAmber
@@ -81,6 +85,8 @@ fun OrderDetailScreen(
     order: Order,
     onBackClick: () -> Unit,
     onDeleted: () -> Unit,
+    fromNotification: Boolean = false,
+    onNotificationBack: () -> Unit = onBackClick,
     onRequestReturnClick: () -> Unit = {},
     onReviewRequestClick: () -> Unit = {},
     onWriteReviewClick: () -> Unit = {},
@@ -96,6 +102,13 @@ fun OrderDetailScreen(
     // confirms in the AlertDialog below, since jumping straight to another app with no warning
     // felt too abrupt.
     var pendingTrackTap by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showReleaseDepositDialog by remember { mutableStateOf(false) }
+    var isReleasingDeposit by remember { mutableStateOf(false) }
+    val handleBack = if (fromNotification) onNotificationBack else onBackClick
+
+    // A notification is an entry point, not a screen in the user's browsing history. Handle the
+    // system gesture/button exactly like the app-bar arrow so neither can reveal Notifications.
+    BackHandler(enabled = fromNotification) { onNotificationBack() }
 
     // Most couriers' official tracking pages run their search through client-side JS rather than
     // a plain URL parameter, so this always copies the number to the clipboard as a reliable
@@ -130,6 +143,15 @@ fun OrderDetailScreen(
         is BuyOrder -> order.status == OrderStatus.SHIPPED
         is RentalOrder -> order.status in setOf(OrderStatus.RENTAL_SHIPPED, OrderStatus.RENTING, OrderStatus.RETURN_PENDING)
     }
+    val rental = order as? RentalOrder
+    val hasDeposit = rental?.deposit?.let { it > 0.0 } == true
+    val depositHolding = rental?.let { it.deposit > 0.0 && it.checkout.depositStatus.isHolding } == true
+    val depositRefunded = rental?.let { it.deposit > 0.0 && it.checkout.depositStatus == DepositStatus.REFUNDED } == true
+    val canReleaseDeposit = isSellerSide && depositHolding && order.status in setOf(
+        OrderStatus.TO_REVIEW,
+        OrderStatus.COMPLETED,
+        OrderStatus.RETURNED
+    )
 
     LaunchedEffect(order.id) {
         if (canReview) alreadyReviewed = ReviewRepository.hasReviewed(order.id)
@@ -141,7 +163,7 @@ fun OrderDetailScreen(
             TopAppBar(
                 title = { Text("Order Details") },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = handleBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -225,6 +247,28 @@ fun OrderDetailScreen(
             SectionTitle("Price Breakdown")
             PriceBreakdownCard(order)
 
+            if (rental != null && hasDeposit) {
+                Spacer(modifier = Modifier.height(12.dp))
+                when {
+                    depositRefunded -> DepositStatusCard(
+                        text = if (isBuyerSide) {
+                            "Deposit Refunded to Wallet: ${formatMoney(rental.deposit)}"
+                        } else {
+                            "✓ Security Deposit Refunded (${formatMoney(rental.deposit)})"
+                        },
+                        color = SuccessGreen
+                    )
+                    depositHolding && isBuyerSide -> DepositStatusCard(
+                        text = "Deposit Held in Escrow: ${formatMoney(rental.deposit)}",
+                        color = WarningAmber
+                    )
+                    depositHolding && isSellerSide && !canReleaseDeposit -> DepositStatusCard(
+                        text = "Security Deposit Held: ${formatMoney(rental.deposit)} · available after return inspection",
+                        color = WarningAmber
+                    )
+                }
+            }
+
             if (payoutPending) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.12f))) {
@@ -260,6 +304,25 @@ fun OrderDetailScreen(
                     Text("Review Request")
                 }
             }
+
+            if (rental != null && isSellerSide && depositHolding) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { if (canReleaseDeposit) showReleaseDepositDialog = true },
+                    enabled = canReleaseDeposit && !isReleasingDeposit,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Inspect & Release Deposit (${formatMoney(rental.deposit)})")
+                }
+                if (!canReleaseDeposit) {
+                    Text(
+                        "Available after the returned item has been confirmed.",
+                        modifier = Modifier.padding(top = 6.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 
@@ -279,6 +342,54 @@ fun OrderDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showReleaseDepositDialog && rental != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isReleasingDeposit) showReleaseDepositDialog = false },
+            title = { Text("Release Security Deposit") },
+            text = {
+                Text(
+                    "Confirm that the rental item has been safely returned without damage. " +
+                        "${formatMoney(rental.deposit)} will be immediately refunded to the renter's wallet."
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isReleasingDeposit,
+                    onClick = {
+                        isReleasingDeposit = true
+                        scope.launch {
+                            OrderRepository.releaseRentalDeposit(order, context)
+                                .onSuccess {
+                                    showReleaseDepositDialog = false
+                                    snackbarHostState.showSnackbar("Security deposit refunded")
+                                }
+                                .onFailure { error ->
+                                    snackbarHostState.showSnackbar(error.message ?: "Couldn't release the deposit")
+                                }
+                            isReleasingDeposit = false
+                        }
+                    }
+                ) {
+                    if (isReleasingDeposit) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("Release & Refund")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isReleasingDeposit,
+                    onClick = { showReleaseDepositDialog = false }
+                ) { Text("Cancel") }
             }
         )
     }
@@ -307,6 +418,23 @@ fun OrderDetailScreen(
             dismissButton = {
                 TextButton(onClick = { pendingTrackTap = null }) { Text("Cancel") }
             }
+        )
+    }
+}
+
+@Composable
+private fun DepositStatusCard(text: String, color: androidx.compose.ui.graphics.Color) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.14f))
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }

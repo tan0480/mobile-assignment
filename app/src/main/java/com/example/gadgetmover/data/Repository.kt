@@ -1,6 +1,7 @@
 package com.example.gadgetmover.data
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -9,7 +10,9 @@ import com.example.gadgetmover.model.BuyOrder
 import com.example.gadgetmover.model.ChatThread
 import com.example.gadgetmover.model.CheckoutDetails
 import com.example.gadgetmover.model.DepositStatus
+import com.example.gadgetmover.model.isHolding
 import com.example.gadgetmover.model.FilterState
+import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.Message
 import com.example.gadgetmover.model.MessageMetadata
@@ -31,6 +34,9 @@ import com.example.gadgetmover.model.SortOption
 import com.example.gadgetmover.model.User
 import com.example.gadgetmover.model.WalletTransaction
 import com.example.gadgetmover.model.WalletTransactionType
+import com.example.gadgetmover.util.ListingScoreCalculator
+import com.example.gadgetmover.notification.SystemNotifier
+import com.example.gadgetmover.util.haversineDistanceKm
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
@@ -90,7 +96,11 @@ object ProductRepository {
 
     fun getById(id: String): Product? = _products.find { it.id == id }
 
+    /** Home's "Featured Listings" — the app's de facto recommendation rail. Ranked by
+     * [ListingScoreCalculator]'s completeness boost, same as [search]'s default [SortOption.RELEVANCE]
+     * order, so a fully-specced listing surfaces above an otherwise-equal sparse one here too. */
     fun getFeatured(): List<Product> = browsable.filter { it.isFeatured }
+        .sortedByDescending { ListingScoreCalculator.score(it).boostMultiplier }
 
     fun getByCategory(category: com.example.gadgetmover.model.ProductCategory): List<Product> =
         _products.filter { it.category == category }
@@ -158,7 +168,8 @@ object ProductRepository {
                     sellerName = profile?.username.orEmpty(),
                     sellerRating = profile?.rating ?: 0f,
                     isSellerVerified = profile?.isVerified ?: false,
-                    sellerAvatarUrl = profile?.avatarUrl.orEmpty()
+                    sellerAvatarUrl = profile?.avatarUrl.orEmpty(),
+                    sellerState = profile?.state.orEmpty()
                 )
             }
             _products.clear()
@@ -286,8 +297,23 @@ object ProductRepository {
             effectivePrice >= filter.priceRange.start && effectivePrice <= filter.priceRange.endInclusive
         }
 
+        filter.locationFilter?.let { location ->
+            results = results.filter { product ->
+                FulfillmentMethod.MEETUP in product.fulfillmentMethods &&
+                    product.meetupLocations.any { spot ->
+                        haversineDistanceKm(location.latitude, location.longitude, spot.latitude, spot.longitude) <= location.radiusKm
+                    }
+            }
+        }
+
         results = when (filter.sortBy) {
-            SortOption.RELEVANCE -> results
+            // No other relevance signal exists yet — baseRankingScore is a uniform 1.0 for every
+            // listing — so this reduces to ranking purely by completeness boost: a fully-specced
+            // listing (boostMultiplier 1.5x) ranks above an otherwise-equal sparse one (1.0x).
+            SortOption.RELEVANCE -> results.sortedByDescending { product ->
+                val baseRankingScore = 1.0f
+                baseRankingScore * ListingScoreCalculator.score(product).boostMultiplier
+            }
             SortOption.PRICE_LOW_HIGH -> results.sortedBy { it.price ?: it.rentalRatePerDay ?: 0.0 }
             SortOption.PRICE_HIGH_LOW -> results.sortedByDescending { it.price ?: it.rentalRatePerDay ?: 0.0 }
             SortOption.NEWEST -> results
@@ -488,6 +514,8 @@ object AuthRepository {
                 set("phone_number", updated.phone)
                 set("location", updated.location)
                 set("avatar_url", updated.avatarUrl)
+                set("city", updated.city)
+                set("state", updated.state)
             }) {
                 filter { eq("id", updated.id) }
             }
@@ -495,6 +523,55 @@ object AuthRepository {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /**
+     * Opportunistically records the seller's city/state — reverse-geocoded from a meet-up
+     * location they just picked while creating a listing (see `util/SellerLocationResolver.kt`
+     * and `ListingWizardScreen`'s meet-up-confirm step) — onto their own profile, so buyers can
+     * later narrow listings by [com.example.gadgetmover.model.filter.CommonFilterFields.sellerState].
+     * Best-effort: a failure here never blocks publishing the listing itself.
+     */
+    suspend fun updateSellerLocation(city: String, state: String) {
+        val user = currentUser.value ?: return
+        try {
+            supabase.from("profiles").update({
+                set("city", city)
+                set("state", state)
+            }) {
+                filter { eq("id", user.id) }
+            }
+            currentUser.value = user.copy(city = city, state = state)
+        } catch (e: Exception) {
+            // Best-effort — the listing itself still publishes fine either way.
+        }
+    }
+
+    private const val AVATARS_BUCKET = "avatars"
+
+    /**
+     * Uploads the seller's already-cropped, square JPEG to the public `avatars` bucket at
+     * `{userId}/avatar.jpg` (overwriting any previous photo via `upsert = true`), then persists
+     * the resulting public URL onto the profile row and reflects it into [currentUser]
+     * immediately via [updateCurrentUser]. The square crop itself is done client-side
+     * (AvatarCropDialog) — every place this app displays an avatar already clips it into a
+     * circle, so a square source is all a circular *display* needs. Returns null on any failure
+     * (network, upload, or the profile-row update) so the caller can show a single generic error.
+     */
+    suspend fun uploadAvatar(bytes: ByteArray): String? {
+        val user = currentUser.value ?: return null
+        return try {
+            val bucket = supabase.storage.from(AVATARS_BUCKET)
+            val path = "${user.id}/avatar.jpg"
+            bucket.upload(path, bytes) { upsert = true }
+            // Cache-busted so AsyncImage/Coil's own URL-keyed cache doesn't keep showing the
+            // previous photo right after a re-upload to this same path.
+            val url = "${bucket.publicUrl(path)}?t=${System.currentTimeMillis()}"
+            val success = updateCurrentUser(user.copy(avatarUrl = url))
+            if (success) url else null
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -778,6 +855,10 @@ object OrderRepository {
     suspend fun refreshFromRemote() {
         val uid = currentUserId() ?: return
         try {
+            // Time-based reminders cannot be emitted by an order-row trigger. This idempotent
+            // RPC enqueues the signed-in party's due rental reminder before notifications are
+            // refreshed; its database milestone key makes repeated app refreshes harmless.
+            runCatching { supabase.postgrest.rpc("enqueue_due_rental_notifications") }
             val rows = supabase.from("orders").select().decodeList<OrderRow>()
             if (rows.isEmpty()) {
                 _orders.clear()
@@ -943,6 +1024,40 @@ object OrderRepository {
             refreshFromRemote()
             _orders.any { it.id == order.id && it.status != order.status }
         }
+    }
+
+    @Serializable
+    private data class ReleaseRentalDepositParams(@SerialName("p_order_id") val orderId: String)
+
+    /**
+     * Releases a returned rental's security deposit through one atomic, seller-authorized RPC.
+     * The database locks the order, re-checks its type/role/return state/holding status, credits
+     * the renter, writes the immutable DEPOSIT_REFUND ledger row and creates both parties'
+     * deduplicated notifications. No client-side read-modify-write of wallet_balance is used.
+     */
+    suspend fun releaseRentalDeposit(order: Order, context: Context): Result<Unit> = runCatching {
+        val rental = order as? RentalOrder
+            ?: throw IllegalArgumentException("Only rental orders have a security deposit")
+        val uid = currentUserId() ?: throw IllegalStateException("Sign in to release a deposit")
+        require(!rental.isRenter && rental.ownerId == uid) { "Only the rental owner can release the deposit" }
+        require(rental.checkout.depositStatus.isHolding) { "This security deposit is not being held" }
+        require(rental.deposit > 0.0) { "This rental has no refundable deposit" }
+
+        val row = supabase.postgrest.rpc(
+            "release_rental_deposit",
+            ReleaseRentalDepositParams(orderId = rental.id)
+        ).decodeSingle<OrderRow>()
+        val updated = row.toOrder(currentUserId = uid, counterpartyName = rental.counterpartyName)
+        val index = _orders.indexOfFirst { it.id == rental.id }
+        if (index >= 0) _orders[index] = updated
+
+        // Immediate local confirmation; the persisted realtime notification has the same
+        // milestone key and therefore replaces, rather than duplicates, this tray entry.
+        SystemNotifier.notifyDepositRefunded(context.applicationContext, updated)
+    }.onFailure {
+        android.util.Log.e("OrderRepository", "releaseRentalDeposit(${order.id}) failed", it)
+        // Reconcile if the network response was lost after the transaction committed.
+        refreshFromRemote()
     }
 
     @Serializable
@@ -1348,8 +1463,10 @@ object NotificationRepository {
                     val notification = row.toNotification().copy(relatedThreadId = threadId)
                     if (_notifications.none { it.id == notification.id }) {
                         _notifications.add(0, notification)
+                        // Only a genuinely new row should reach Android. Realtime reconnects can
+                        // replay an INSERT already present in memory.
+                        onNewNotification(notification)
                     }
-                    onNewNotification(notification)
                 }
             }
             try {

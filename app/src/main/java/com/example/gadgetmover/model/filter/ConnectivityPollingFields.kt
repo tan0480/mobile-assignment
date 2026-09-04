@@ -28,7 +28,7 @@ object ConnectivityPollingFields {
     val pollingRateWired = FilterField(
         key = "polling_rate_wired",
         label = "Polling Rate (Wired)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("125Hz", "250Hz", "500Hz", "1000Hz", "2000Hz", "4000Hz", "8000Hz", "Other"),
         visibleWhen = FieldDependency("connectivity", setOf(WIRED_ID))
     )
@@ -36,7 +36,7 @@ object ConnectivityPollingFields {
     val pollingRateWireless2_4G = FilterField(
         key = "polling_rate_2_4ghz",
         label = "Polling Rate (2.4GHz Wireless)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("125Hz", "250Hz", "500Hz", "1000Hz", "2000Hz", "4000Hz", "8000Hz", "Other"),
         visibleWhen = FieldDependency("connectivity", setOf(WIRELESS_2_4G_ID))
     )
@@ -44,7 +44,7 @@ object ConnectivityPollingFields {
     val pollingRateBluetooth = FilterField(
         key = "polling_rate_bluetooth",
         label = "Polling Rate (Bluetooth)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("125Hz", "133Hz", "250Hz", "Other"),
         visibleWhen = FieldDependency("connectivity", setOf(BLUETOOTH_ID))
     )
@@ -52,7 +52,7 @@ object ConnectivityPollingFields {
     val pollingRateNearLink = FilterField(
         key = "polling_rate_nearlink",
         label = "Polling Rate (NearLink)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("125Hz", "250Hz", "500Hz", "1000Hz", "2000Hz", "4000Hz", "8000Hz", "Other"),
         visibleWhen = FieldDependency("connectivity", setOf(NEARLINK_ID))
     )

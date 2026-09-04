@@ -13,6 +13,7 @@ import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.data.WalletRepository
 import com.example.gadgetmover.model.Address
 import com.example.gadgetmover.model.CheckoutDetails
+import com.example.gadgetmover.model.DepositStatus
 import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.MeetupLocation
@@ -283,6 +284,9 @@ class CheckoutViewModel(
             returnFullAddress = if (state.returningMethod == FulfillmentMethod.SHIPPING) product.returnFullAddress else null,
             receivingMeetup = state.receivingMeetup,
             returningMeetup = state.returningMeetup,
+            depositStatus = if (state.transactionType == ListingType.RENT && state.refundableDeposit > 0) {
+                DepositStatus.HOLDING
+            } else null,
             shippingTierUsed = if (state.receivingMethod == FulfillmentMethod.SHIPPING || state.returningMethod == FulfillmentMethod.SHIPPING) {
                 state.shippingTier.name
             } else {

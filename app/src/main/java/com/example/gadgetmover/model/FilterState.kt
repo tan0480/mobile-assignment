@@ -3,6 +3,15 @@ package com.example.gadgetmover.model
 import com.example.gadgetmover.model.filter.FloatRangeSerializer
 import kotlinx.serialization.Serializable
 
+/** A buyer's chosen "browse meet-up listings near me" center + radius — see [com.example.gadgetmover.screen.explore.LocationRadiusFilterScreen]. Only ever narrows [FulfillmentMethod.MEETUP] listings; a shipping-only listing has no meet-up spot to measure against, so it's left alone regardless of this filter. */
+@Serializable
+data class LocationRadiusFilter(
+    val latitude: Double,
+    val longitude: Double,
+    val address: String,
+    val radiusKm: Float
+)
+
 @Serializable
 enum class SortOption(val label: String) {
     RELEVANCE("Relevance"),
@@ -29,7 +38,8 @@ data class FilterState(
     val conditions: Set<Condition> = emptySet(),
     @Serializable(with = FloatRangeSerializer::class)
     val priceRange: ClosedFloatingPointRange<Float> = 0f..2000f,
-    val sortBy: SortOption = SortOption.RELEVANCE
+    val sortBy: SortOption = SortOption.RELEVANCE,
+    val locationFilter: LocationRadiusFilter? = null
 ) {
     val activeFilterCount: Int
         get() {
@@ -38,6 +48,7 @@ data class FilterState(
             if (categories.isNotEmpty()) count++
             if (conditions.isNotEmpty()) count++
             if (priceRange != 0f..2000f) count++
+            if (locationFilter != null) count++
             return count
         }
 }

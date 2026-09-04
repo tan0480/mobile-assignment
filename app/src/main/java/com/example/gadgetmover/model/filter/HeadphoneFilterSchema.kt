@@ -20,33 +20,39 @@ object HeadphoneFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Sony", "Bose", "Sennheiser", "Beyerdynamic", "Audio-Technica", "AKG", "Bang & Olufsen", "JBL",
-            "Skullcandy", "Beats", "Jabra", "Anker Soundcore", "Focal", "HiFiMan", "Grado", "Philips",
-            "Marshall", "Edifier", "1MORE", "Shure", "Corsair", "SteelSeries", "Razer", "HyperX", "ASUS ROG",
-            "Logitech G", "Other"
+            "1MORE", "Abyss", "Adam Audio", "AIAIAI", "AKG", "Alienware", "Anker Soundcore", "Apple",
+            "Audeze", "Audio-Technica", "Austrian Audio", "Bang & Olufsen", "Beats", "Beyerdynamic", "Bluedio",
+            "Bose", "Bowers & Wilkins", "Campfire Audio", "Cleer Audio", "Cooler Master", "Corsair", "Creative",
+            "Dan Clark Audio", "Denon", "Dyson", "Edifier", "EPOS", "FiiO", "Final", "Focal", "Fostex", "Grado",
+            "HarmonicDyne", "HEDD Audio", "HiFiMAN", "House of Marley", "HyperX", "Jabra", "JBL", "JLab", "JVC",
+            "Kennerton", "Klipsch", "Koss", "Logitech G", "Marshall", "Master & Dynamic", "Meze Audio",
+            "Microsoft", "Monoprice", "Monster", "NAD", "Noble Audio", "Nothing", "OneOdio", "Oppo",
+            "Panasonic", "Philips", "Pioneer DJ", "Plantronics", "Poly", "Razer", "RODE", "Samsung",
+            "Sennheiser", "Shokz", "Skullcandy", "Sonos", "Sony", "Stax", "SteelSeries", "Superlux",
+            "Technics", "Teufel", "Thieaudio", "Turtle Beach", "Ultrasone", "V-MODA", "Yamaha", "Unknown"
         )
     )
 
     val acousticDesign = FilterField(
         key = "acoustic_design",
         label = "Acoustic Design",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Closed-Back", "Open-Back", "Semi-Open", "Other")
     )
 
     val formFactor = FilterField(
         key = "form_factor",
         label = "Form Factor",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Over-Ear (Circumaural)", "On-Ear (Supra-aural)", "Other")
     )
 
     val earpadMaterial = FilterField(
         key = "earpad_material",
         label = "Earpad Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Leather / Protein Leather", "Fabric / Mesh", "Velour", "Memory Foam",
             "Hybrid (Leather + Fabric/Velour)", "Other"
@@ -56,7 +62,7 @@ object HeadphoneFilterSchema {
     val driverType = FilterField(
         key = "driver_type",
         label = "Driver Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Dynamic", "Planar Magnetic", "Electrostatic", "Balanced Armature", "Bone Conduction", "Other")
     )
 
@@ -120,13 +126,8 @@ object HeadphoneFilterSchema {
         type = FilterType.NumberRange(min = 150f, max = 600f, step = 10f, unit = "g", unitIsPrefix = false)
     )
 
-    /** Sports/gym-oriented headphones are commonly IP-rated; added for consistency with [WirelessEarphoneFilterSchema] and [AudioSpeakerFilterSchema], which both already carry this field. */
-    val ipRating = FilterField(
-        key = "ip_rating",
-        label = "Ingress Protection (IP Rating)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("IPX4", "IPX5", "IPX7", "IP54", "IP55", "IP68", "Other")
-    )
+    /** Sports/gym-oriented headphones are commonly IP-rated; shared with every other category that carries this field — see [IpRatingFields]. */
+    val ipRating = IpRatingFields.ipRating
 
     val features = FilterField(
         key = "features",
@@ -141,8 +142,7 @@ object HeadphoneFilterSchema {
             "Detachable Cable",
             "Replaceable Earpads",
             "Spatial Audio / Head Tracking Support",
-            "RGB Lighting",
-            "Other"
+            "RGB Lighting"
         )
     )
 

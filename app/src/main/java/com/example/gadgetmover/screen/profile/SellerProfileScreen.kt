@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.model.Product
@@ -62,6 +61,7 @@ import com.example.gadgetmover.model.User
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
+import com.example.gadgetmover.screen.components.UserAvatar
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.util.formatDisplayDateOnly
@@ -250,28 +250,14 @@ private fun SellerHeaderCard(seller: User?, fallbackName: String, onReviewsClick
             .padding(20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(AccentLime),
-                contentAlignment = Alignment.Center
-            ) {
-                if (!seller?.avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = seller.avatarUrl,
-                        contentDescription = null,
-                        modifier = Modifier.size(56.dp).clip(CircleShape)
-                    )
-                } else {
-                    Text(
-                        (seller?.name ?: fallbackName).take(1).uppercase(),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandBlueDark
-                    )
-                }
-            }
+            UserAvatar(
+                avatarUrl = seller?.avatarUrl.orEmpty(),
+                displayName = seller?.name ?: fallbackName,
+                modifier = Modifier.size(56.dp),
+                fallbackBackground = AccentLime,
+                fallbackContentColor = BrandBlueDark,
+                contentDescription = "${seller?.name ?: fallbackName}'s profile photo"
+            )
             Spacer(modifier = Modifier.width(14.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -1,5 +1,6 @@
 package com.example.gadgetmover.screen.profile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,8 +67,9 @@ fun MyListingsScreen(
     onBackClick: () -> Unit,
     onProductClick: (Product) -> Unit
 ) {
+    // Sold listings stay visible here (marked with a "SOLD" badge below) rather than disappearing —
+    // ProfileScreen's own listing count already excludes them from "active" separately.
     val listings = ProductRepository.myListings(AuthRepository.currentUser.value?.id.orEmpty())
-        .filter { it.status != ProductStatus.SOLD }
     var pendingDelete by remember { mutableStateOf<Product?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var isBackgroundLoading by remember { mutableStateOf(false) }
@@ -87,7 +89,7 @@ fun MyListingsScreen(
                 title = { Text("My Listings") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -110,7 +112,7 @@ fun MyListingsScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.Inventory2, // TODO: swap with custom ImageVector
+                        Icons.Filled.Inventory2,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -142,6 +144,21 @@ fun MyListingsScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     ListingTypeBadge(listingType = product.listingType)
+                                    if (product.status == ProductStatus.SOLD) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(MaterialTheme.colorScheme.onSurfaceVariant)
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                "SOLD",
+                                                color = MaterialTheme.colorScheme.surface,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 val showSalePrice = product.listingType == ListingType.BUY || product.listingType == ListingType.BOTH
@@ -162,7 +179,7 @@ fun MyListingsScreen(
                                 }
                             }
                             IconButton(onClick = { pendingDelete = product }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Remove listing", tint = MaterialTheme.colorScheme.error) // TODO: swap with custom ImageVector
+                                Icon(Icons.Filled.Delete, contentDescription = "Remove listing", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }

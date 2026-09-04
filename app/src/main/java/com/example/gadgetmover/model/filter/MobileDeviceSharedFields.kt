@@ -38,24 +38,10 @@ object MobileDeviceSharedFields {
     val bluetoothVersion = FilterField(
         key = "bluetooth_version",
         label = "Bluetooth Version",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("5.0", "5.1", "5.2", "5.3", "5.4", "6.0+", "Other"),
         visibleWhen = FieldDependency("bluetooth_supported", setOf(SUPPORTED_ID))
     )
 
     val bluetoothFields: List<FilterField> = listOf(bluetoothSupported, bluetoothVersion)
-
-    val chargerIncludedInBox = FilterField(
-        key = "charger_included_in_box",
-        label = "Charger Included in Box",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
-    )
-
-    val headphoneJack = FilterField(
-        key = "headphone_jack_3_5mm",
-        label = "3.5mm Headphone Jack",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
-    )
 }

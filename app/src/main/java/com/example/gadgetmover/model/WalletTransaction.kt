@@ -10,6 +10,7 @@ enum class WalletTransactionType(val label: String) {
     PURCHASE("Order payment"),
     SALE_PAYOUT("Sale payout"),
     RENTAL_PAYOUT("Rental payout"),
+    DEPOSIT_REFUND("Rental Deposit Refund"),
     REFUND("Refund")
 }
 

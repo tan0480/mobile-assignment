@@ -17,13 +17,24 @@ object KeyboardFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
             "Ducky", "Keychron", "Logitech", "Logitech G", "Razer", "Corsair", "SteelSeries", "HyperX",
             "ASUS ROG", "ROCCAT", "Cooler Master", "NZXT", "Glorious", "Varmilo", "Leopold", "Realforce (Topre)",
             "NuPhy", "Akko", "Royal Kludge (RK)", "Epomaker", "Wooting", "Drop", "Das Keyboard", "Filco",
             "Durgod", "Obins (Anne Pro)", "Womier", "Monsgeek", "Aula", "Redragon", "Mountain", "Endgame Gear",
-            "Fnatic", "Rapoo", "Dareu", "IQUNIX", "Meletrix", "KBDfans", "Other"
+            "Fnatic", "Rapoo", "Dareu", "IQUNIX", "Meletrix", "KBDfans",
+            "8BitDo", "Adesso", "Ajazz", "Alienware", "Angry Miao", "Apple", "Arteck", "Attack Shark",
+            "Cherry / Cherry Xtrfy", "Chilkey", "Dell", "Fantech", "Fnatic Gear",
+            "G.Skill", "Gigabyte / AORUS", "Havit", "HHKB", "HP / OMEN", "iKBC", "Kensington", "Kinesis",
+            "Lemokey", "Lenovo / Legion", "Lofree", "LUMINKEY", "Machenike", "Mad Catz", "Matias", "MCHOSE",
+            "MelGeek", "Microsoft", "Mistel", "Mode Designs", "NIZ", "Neo", "NovelKeys", "Perixx", "ProtoArc",
+            "Pulsar", "Qwertykeys", "Satechi", "Tecware", "Thermaltake / Tt eSPORTS", "Trust",
+            "Turtle Beach", "VGN", "Vortex", "WLMOUSE", "WOBKEY", "Work Louder", "XPG", "YUNZII", "ZSA",
+            "CannonKeys", "Click Clack", "DOIO", "Evoworks", "Geonworks", "Hexgears", "KBParadise",
+            "Keebwerk", "Keycool", "KPrepublic", "Matrix Lab", "MechWild", "MK", "Moon Keyboards",
+            "Nuphy Field", "Odin Gaming", "Owlab", "Percent Studio", "Smith + Rune", "Shortcut Studio",
+            "Shurikey", "Swagkeys", "TEX", "Ticktype", "Typone", "VGNLab", "Unknown"
         )
     )
 
@@ -31,7 +42,7 @@ object KeyboardFilterSchema {
     val layoutFormFactor = FilterField(
         key = "layout_form_factor",
         label = "Layout & Form Factor",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "100% Full Size (104 / 108 Keys)",
             "96% / 98% (96 - 100 Keys)",
@@ -64,52 +75,35 @@ object KeyboardFilterSchema {
     val switchFeel = FilterField(
         key = "switch_feel",
         label = "Switch Feel",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Linear", "Tactile", "Clicky", "Silent Linear", "Silent Tactile", "Other")
     )
 
-    val switchModel = FilterField(
-        key = "switch_model",
-        label = "Switch Model",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
-        options = options(
-            // HMX
-            "HMX Ziwei", "HMX Sunset Gleam", "HMX Cheese", "HMX Sillyworks Hyacinth V2/V2U",
-            "HMX Canglan", "HMX Macchiato", "HMX Xinhai", "HMX Deep Navy", "HMX Eva",
-            // Gateron / KTT / Outemu
-            "KTT Kang White V3", "KTT Strawberry", "Gateron Oil King", "Gateron Baby Kangaroo",
-            "Gateron CJ", "Gateron North Pole", "Gateron Smoothie", "Gateron Ink Black V2",
-            "Gateron Magnetic Jade", "Gateron KS-20 Magnetic White",
-            // TTC
-            "TTC Gold Pink", "TTC Honey", "TTC Speed Silver V2", "TTC Frozen Silent V2",
-            "TTC Neptune / Venus", "TTC Iron",
-            // JWK / Durock
-            "JWK T1", "JWK Black V2", "Durock POM Piano", "Durock Shrimp",
-            // BSUN / Vertex / SW
-            "Vertex V1", "BSUN BCP", "BSUN Aniya", "BSUN Raw", "BSUN Roselle", "SW Knight",
-            // Leobog / Akko
-            "Leobog Graywood V3/V4", "Leobog Reaper", "Leobog Building Block",
-            "Akko CS Piano", "Akko V3 Cream Yellow Pro", "Akko V3 Cream Blue Pro",
-            "Outemu Silent Peach V3", "Outemu Silent Lemon V3",
-            // Cherry
-            "Cherry MX Red", "Cherry MX Brown", "Cherry MX Blue", "Cherry MX Black",
-            "Cherry MX Speed Silver", "Cherry MX Ergo Clear", "Cherry MX2A Red", "Cherry MX2A Brown",
-            "Other"
-        )
+    /**
+     * Brand-then-model switch picker, e.g. picking "Gateron" narrows the model list to just
+     * Gateron's own switches (see [SwitchCatalog]) — repeatable via "+ Add Switch" so a keyboard
+     * built with more than one switch type can list each one. No "Other" entry in the catalogue:
+     * [FilterType.SearchablePopupSelect.allowCustomInput] already lets a seller/buyer type
+     * anything not listed, both here and for [brand] above.
+     */
+    val switchSystem = FilterField(
+        key = "switch_system",
+        label = "Switch Brand & Model",
+        type = FilterType.SwitchSystemBuilder
     )
 
     /** C. Keycap Architecture */
     val keycapMaterial = FilterField(
         key = "keycap_material",
         label = "Keycap Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("PBT", "ABS", "POM", "PC", "Other")
     )
 
     val keycapProfile = FilterField(
         key = "keycap_profile",
         label = "Keycap Profile",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "OEM", "Cherry", "XDA", "DSA", "SA", "KAT / KAM", "MDA / KDA", "MOA", "Low Profile", "Other"
         )
@@ -118,7 +112,7 @@ object KeyboardFilterSchema {
     val keycapPrinting = FilterField(
         key = "keycap_printing",
         label = "Keycap Printing / Legend",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Double-shot", "Dye-sub", "Laser", "Side-engraved / Phantom", "Blank", "Other")
     )
 
@@ -126,7 +120,7 @@ object KeyboardFilterSchema {
     val pcbFlexCut = FilterField(
         key = "pcb_flex_cut",
         label = "PCB Flex Cut",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("No Flex Cut", "Per-key Flex Cut", "Multi-key Flex Cut", "Long / Full Flex Cut", "Other")
     )
 
@@ -150,8 +144,7 @@ object KeyboardFilterSchema {
             "Knob Control",
             "Display Screen (TFT / OLED)",
             "QMK / VIA / Web Driver Support",
-            "RGB Backlight",
-            "Other"
+            "RGB Backlight"
         )
     )
 
@@ -159,7 +152,7 @@ object KeyboardFilterSchema {
         sections = listOf(
             brand,
             layoutFormFactor,
-            switchType, switchFeel, switchModel,
+            switchType, switchFeel, switchSystem,
             keycapMaterial, keycapProfile, keycapPrinting,
             pcbFlexCut,
             batteryCapacity

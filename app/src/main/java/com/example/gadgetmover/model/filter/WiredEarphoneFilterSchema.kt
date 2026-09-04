@@ -12,18 +12,24 @@ object WiredEarphoneFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Moondrop", "KZ (Knowledge Zenith)", "7Hz", "Tanchjim", "Tin HiFi", "ThieAudio", "Truthear",
-            "Etymotic", "Shure", "Sennheiser", "Audio-Technica", "Final Audio", "Campfire Audio", "FiiO",
-            "DUNU", "Simgot", "Kiwi Ears", "Letshuoer", "Whizzer", "Yincrow", "BLON", "CCA", "QKZ", "Other"
+            "7Hz", "64 Audio", "Aful", "AKG", "Akg N5005", "Apple", "Astell&Kern", "Audeze", "Audio-Technica",
+            "Audiosense", "BGVP", "Beyerdynamic", "BLON", "Campfire Audio", "CCA", "Dita Audio", "Dunu",
+            "EarFun", "Elysian Acoustic Labs", "Etymotic", "FiiO", "Final", "Focal", "Fostex", "Hidizs",
+            "HiBy", "IKKO", "Jabra", "JBL", "JH Audio", "JVC", "Kiwi Ears", "Klipsch", "Koss", "KZ",
+            "Letshuoer", "Linsoul", "Meze Audio", "Moondrop", "Noble Audio", "Oriveti", "Panasonic",
+            "Philips", "QDC", "QKZ", "Rose Technics", "SeeAudio", "Sennheiser", "Shanling", "Shure",
+            "Simgot", "Sivga", "Sony", "Symphonium Audio", "Tangzu", "Thieaudio", "Tin HiFi", "Truthear",
+            "Ultimate Ears", "Unique Melody", "V-MODA", "Vision Ears", "Westone Audio", "Yanyin", "Yuin",
+            "Ziigaat", "Unknown"
         )
     )
 
     val formFactorWearingStyle = FilterField(
         key = "form_factor_wearing_style",
         label = "Form Factor & Wearing Style",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "In-Ear (Over-Ear Cable / IEM Style)", "In-Ear (Straight-Down Cable)", "Flat-Head Earbuds", "Other"
         )
@@ -32,7 +38,7 @@ object WiredEarphoneFilterSchema {
     val driverConfiguration = FilterField(
         key = "driver_configuration",
         label = "Driver Configuration",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Single Dynamic Driver (1 DD)", "Dual / Multi Dynamic Driver (Multi-DD)",
             "Single Balanced Armature (1 BA)", "Multi Balanced Armature (Multi-BA)",
@@ -76,7 +82,7 @@ object WiredEarphoneFilterSchema {
     val cableConnectorType = FilterField(
         key = "cable_connector_type",
         label = "Cable Connector Type (Earphone Side)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "0.78mm 2-Pin", "MMCX", "QDC (Protruding 2-Pin)", "TFZ 2-Pin", "Pentaconn Ear",
             "IPX / T2", "Non-detachable (Fixed Cable)", "Other"
@@ -145,8 +151,7 @@ object WiredEarphoneFilterSchema {
             "Physical Tuning Switches (Dip Switches)",
             "Custom In-Ear Monitor (CIEM Resin Shell)",
             "Detachable Cable",
-            "Detachable Gaming Boom Microphone",
-            "Other"
+            "Detachable Gaming Boom Microphone"
         )
     )
 

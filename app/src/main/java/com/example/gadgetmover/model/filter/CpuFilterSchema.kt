@@ -12,15 +12,21 @@ object CpuFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
-        options = options("Intel", "AMD", "Other")
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
+        options = options(
+            "Allwinner", "AMD", "Ampere Computing", "Apple", "Arm", "AWS", "Baikal Electronics", "Broadcom",
+            "Cavium", "Centaur Technology", "Fujitsu", "Google", "Huawei HiSilicon", "IBM", "Intel",
+            "Loongson", "Marvell", "MediaTek", "Microsoft", "NVIDIA", "NXP", "Phytium", "Qualcomm",
+            "Renesas", "Rockchip", "Samsung", "SiFive", "Sophgo", "StarFive", "Texas Instruments",
+            "UNISOC", "VIA", "Xilinx", "Zhaoxin", "Unknown"
+        )
     )
 
     val socket = FilterField(
         key = "socket",
         label = "Socket",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options(*PcSocketOptions.labels)
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = PcSocketOptions.options
     )
 
     private val cpuModelsByBrand: Map<String, List<FilterOption>> = mapOf(
@@ -50,7 +56,7 @@ object CpuFilterSchema {
             "Ryzen Threadripper 7980X", "Ryzen Threadripper 7970X", "Ryzen Threadripper 7960X", "Ryzen Threadripper 3990X", "Ryzen Threadripper 3970X", "Ryzen Threadripper 2990WX",
             "EPYC 9754", "EPYC 9654", "EPYC 7763", "EPYC 7742", "EPYC 4585PX"
         ),
-        "other" to options("Other")
+        "other" to emptyList()
     )
 
     /** Narrows to just the picked [brand]'s chips — same dependent-options mechanism [PhoneFilterSchema.socModel] introduced (this field used to just keep one brand-tagged flat list, per an older note here; now it actually filters). Covers roughly the last 10 years of desktop models, including enterprise-grade (Xeon/EPYC/Threadripper). */
@@ -60,7 +66,7 @@ object CpuFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = cpuModelsByBrand.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedBrandIds = (state.valueFor("brand") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedBrandIds = selectedIdsFor(state, "brand")
             val matched = selectedBrandIds.flatMap { cpuModelsByBrand[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { cpuModelsByBrand.values.flatten().distinctBy { it.id } }
         }
@@ -69,7 +75,7 @@ object CpuFilterSchema {
     val coreArchitecture = FilterField(
         key = "core_architecture",
         label = "Core Architecture",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Hybrid Architecture (Performance-cores + Efficient-cores)", "Pure Performance Big-cores (All Full-spec Cores)", "Other")
     )
 
@@ -106,14 +112,14 @@ object CpuFilterSchema {
     val memorySupport = FilterField(
         key = "memory_support",
         label = "Memory Support",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("DDR5 Only", "DDR4 Only", "DDR5 & DDR4 Compatible")
     )
 
     val nativePcieRevision = FilterField(
         key = "native_pcie_revision",
         label = "Native PCIe Revision",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("PCIe 5.0", "PCIe 4.0", "PCIe 3.0")
     )
 
@@ -129,7 +135,7 @@ object CpuFilterSchema {
         type = FilterType.CheckboxList,
         options = options(
             "Integrated Graphics", "Unlocked Multiplier (Overclockable)", "Stock Cooler Included",
-            "ECC Memory Support", "3D V-Cache", "Other"
+            "ECC Memory Support", "3D V-Cache"
         )
     )
 

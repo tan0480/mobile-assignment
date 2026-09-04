@@ -87,7 +87,7 @@ fun AnalyticsScreen(onBackClick: () -> Unit) {
                 title = { Text("Analytics") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -178,7 +178,7 @@ private fun StatCard(icon: ImageVector, tint: Color, label: String, value: Strin
                 modifier = Modifier.size(36.dp).clip(CircleShape).background(tint.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp)) // TODO: swap with custom ImageVector
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

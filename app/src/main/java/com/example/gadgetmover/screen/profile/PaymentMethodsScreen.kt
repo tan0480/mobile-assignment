@@ -109,7 +109,7 @@ fun PaymentMethodsScreen(onBackClick: () -> Unit) {
                 title = { Text("Payment Methods") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -151,7 +151,7 @@ fun PaymentMethodsScreen(onBackClick: () -> Unit) {
                 if (isAddingCard) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
                 } else {
-                    Icon(Icons.Filled.Add, contentDescription = "Add card", tint = Color.White) // TODO: swap with custom ImageVector
+                    Icon(Icons.Filled.Add, contentDescription = "Add card", tint = Color.White)
                 }
             }
         }
@@ -216,7 +216,7 @@ private fun PaymentMethodRow(method: PaymentMethod, onSetDefault: () -> Unit, on
                     .background(BrandBlueDark.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.CreditCard, contentDescription = null, tint = BrandBlueDark) // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.CreditCard, contentDescription = null, tint = BrandBlueDark)
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -231,7 +231,7 @@ private fun PaymentMethodRow(method: PaymentMethod, onSetDefault: () -> Unit, on
                 TextButton(onClick = onSetDefault) { Text("Set default") }
             }
             IconButton(onClick = onRemove) {
-                Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error) // TODO: swap with custom ImageVector
+                Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
             }
         }
     }

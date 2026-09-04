@@ -39,8 +39,18 @@ fun FilterFieldValue.displayText(field: FilterField, state: CategoryFilterState)
             if (type == null) "${range.start} - ${range.endInclusive}"
             else "${formatRangeBound(type, range.start)} - ${formatRangeBound(type, range.endInclusive)}"
         }
+        is FilterFieldValue.UnitNumberInput -> if (unit.isNotEmpty()) "$value $unit" else value
+        is FilterFieldValue.UnitRangeInput -> {
+            fun bound(v: Float): String {
+                val numberText = if (v == v.toInt().toFloat()) v.toInt().toString() else "%.1f".format(v)
+                return "$numberText $unit"
+            }
+            "${bound(range.start)} - ${bound(range.endInclusive)}"
+        }
         is FilterFieldValue.Toggle -> "Yes"
         is FilterFieldValue.CameraRequirements -> items.joinToString("; ") { it.summaryText() }
         is FilterFieldValue.PcieSlotRequirements -> items.joinToString("; ") { it.summaryText() }
+        is FilterFieldValue.SwitchRequirements -> items.joinToString("; ") { it.summaryText() }
+        is FilterFieldValue.VideoPortRequirements -> items.joinToString("; ") { it.summaryText() }
     }
 }

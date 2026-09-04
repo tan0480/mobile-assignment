@@ -14,6 +14,10 @@ data class User(
     val rating: Float,
     val ratingCount: Int,
     val location: String,
+    /** Reverse-geocoded from a meet-up location the seller picked while creating a listing — see `util/SellerLocationResolver.kt`. Blank until they've set one. */
+    val city: String = "",
+    /** One of `model/filter/MalaysiaStates.kt`'s 16 states/federal territories, or blank — matched by [com.example.gadgetmover.model.filter.CommonFilterFields.sellerState]. */
+    val state: String = "",
     val joinedDate: String,
     val isVerified: Boolean = false,
     val walletBalance: Double = 0.0,

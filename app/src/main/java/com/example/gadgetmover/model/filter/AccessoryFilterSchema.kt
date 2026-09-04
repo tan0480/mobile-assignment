@@ -17,10 +17,10 @@ object AccessoryFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
             "Anker", "Belkin", "UGREEN", "Baseus", "Spigen", "ESR", "OtterBox", "Satechi", "Logitech",
-            "RAVPower", "Aukey", "Mophie", "Native Union", "Twelve South", "Peak Design", "Other"
+            "RAVPower", "Aukey", "Mophie", "Native Union", "Twelve South", "Peak Design", "Unknown"
         )
     )
 

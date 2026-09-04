@@ -97,6 +97,9 @@ dependencies {
     // payment/withdraw confirmation gates — see util/BiometricAuthenticator.kt. 1.1.0 is the
     // latest stable release on Google's Maven (checked directly; 1.2.0+ is still alpha-only).
     implementation("androidx.biometric:biometric:1.1.0")
+    // Reads JPEG orientation off camera captures so the avatar crop screen (AvatarCropDialog.kt)
+    // shows/crops a photo right-side-up regardless of how the device physically held the camera.
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

@@ -13,7 +13,12 @@ sealed class Screen(val route: String) {
     }
 
     object Home : Screen("home")
-    object Explore : Screen("explore")
+    object Explore : Screen("explore?openCategoryPicker={openCategoryPicker}") {
+        fun createRoute(openCategoryPicker: Boolean = false) = "explore?openCategoryPicker=$openCategoryPicker"
+    }
+    object DynamicFilter : Screen("dynamic_filter")
+    object SearchUsers : Screen("search_users")
+    object LocationRadiusFilter : Screen("location_radius_filter")
     object ListingWizard : Screen("listing_wizard/{editProductId}") {
         const val NEW_LISTING_ID = "new"
         fun createRoute(editProductId: String = NEW_LISTING_ID) = "listing_wizard/$editProductId"
@@ -49,9 +54,11 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile")
     object AccountInfo : Screen("account_info")
     object ChangePassword : Screen("change_password")
+    object CreatePassword : Screen("create_password")
     object MyActivities : Screen("my_activities")
-    object OrderDetail : Screen("order_detail/{orderId}") {
-        fun createRoute(orderId: String) = "order_detail/$orderId"
+    object OrderDetail : Screen("order_detail/{orderId}?fromNotification={fromNotification}") {
+        fun createRoute(orderId: String, fromNotification: Boolean = false) =
+            "order_detail/$orderId?fromNotification=$fromNotification"
     }
     object ReturnRequest : Screen("return_request/{orderId}") {
         fun createRoute(orderId: String) = "return_request/$orderId"

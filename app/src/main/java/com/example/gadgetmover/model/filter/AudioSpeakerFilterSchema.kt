@@ -26,18 +26,25 @@ object AudioSpeakerFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Sonos", "JBL", "Bose", "Sony", "Bang & Olufsen", "Marshall", "Harman Kardon", "Anker Soundcore",
-            "Ultimate Ears (UE)", "Klipsch", "Yamaha", "Denon", "Polk Audio", "KEF", "Edifier", "Logitech",
-            "Devialet", "Naim", "Bowers & Wilkins", "Amazon Echo", "Google Nest", "Xiaomi", "Other"
+            "Acoustic Energy", "Adam Audio", "Altec Lansing", "Amazon", "Anker Soundcore", "Apple",
+            "Audio Pro", "Audioengine", "Bang & Olufsen", "Behringer", "Bluesound", "Bose", "Bowers & Wilkins",
+            "Cambridge Audio", "Canton", "Creative", "DALI", "Definitive Technology", "Denon", "Devialet",
+            "Dynaudio", "Edifier", "Electro-Voice", "Elac", "Fender", "Focal", "Genelec", "Google",
+            "Harman Kardon", "House of Marley", "IK Multimedia", "IKEA", "Jamo", "JBL", "KEF", "Klipsch",
+            "Kanto", "LG", "Loewe", "Logitech", "Mackie", "Marshall", "MartinLogan", "McIntosh",
+            "Monitor Audio", "Naim", "Neumann", "Onkyo", "Panasonic", "Philips", "Pioneer", "Polk Audio",
+            "PreSonus", "Q Acoustics", "Razer", "Reloop", "RODE", "Ruark Audio", "Samsung", "Sonos", "Sony",
+            "Soundboks", "SVS", "Tannoy", "Technics", "Teufel", "Tribit", "Ultimate Ears", "Victrola",
+            "Wharfedale", "Xiaomi", "Yamaha", "Unknown"
         )
     )
 
     val speakerType = FilterField(
         key = "speaker_type",
         label = "Speaker Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Bookshelf Speakers", "Monitor Speakers", "Floorstanding / Tower Speakers", "Soundbar",
             "Portable Bluetooth Speaker", "Outdoor Speaker", "In-Wall / Ceiling Speaker",
@@ -59,7 +66,7 @@ object AudioSpeakerFilterSchema {
     val amplificationPowerType = FilterField(
         key = "amplification_power_type",
         label = "Amplification & Power Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Active / Powered (Built-in Amplifier)", "Passive (External Amp Required)", "Other")
     )
 
@@ -74,7 +81,7 @@ object AudioSpeakerFilterSchema {
     val speakerConfiguration = FilterField(
         key = "speaker_configuration",
         label = "Speaker Configuration",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Full-Range", "2-Way (Tweeter + Woofer)", "3-Way (Tweeter + Midrange + Woofer)",
             "2.1 / Subwoofer System", "Coaxial Driver", "Other"
@@ -104,7 +111,7 @@ object AudioSpeakerFilterSchema {
     val tweeterType = FilterField(
         key = "tweeter_type",
         label = "Tweeter Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Dome", "Ribbon", "Horn", "AMT (Air Motion Transformer)", "Planar", "Other"),
         visibleWhen = tweeterDependency
     )
@@ -112,7 +119,7 @@ object AudioSpeakerFilterSchema {
     val tweeterMaterial = FilterField(
         key = "tweeter_material",
         label = "Tweeter Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Silk", "Polymer", "Aluminum", "Titanium", "Beryllium", "Diamond", "Ceramic", "Other"),
         visibleWhen = tweeterDependency
     )
@@ -129,7 +136,7 @@ object AudioSpeakerFilterSchema {
     val midrangeType = FilterField(
         key = "midrange_type",
         label = "Midrange Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Cone", "Dome", "Planar", "Other"),
         visibleWhen = midrangeDependency
     )
@@ -137,7 +144,7 @@ object AudioSpeakerFilterSchema {
     val midrangeMaterial = FilterField(
         key = "midrange_material",
         label = "Midrange Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Paper / Treated Paper", "Aluminum", "Kevlar", "Carbon Fiber", "Beryllium", "Ceramic", "Other"),
         visibleWhen = midrangeDependency
     )
@@ -154,7 +161,7 @@ object AudioSpeakerFilterSchema {
     val wooferMaterial = FilterField(
         key = "woofer_material",
         label = "Woofer Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Paper / Treated Paper", "Polypropylene (PP)", "Kevlar", "Carbon Fiber",
             "Aluminum", "Magnesium", "Composite", "Other"
@@ -172,7 +179,7 @@ object AudioSpeakerFilterSchema {
     val additionalBassEnhancement = FilterField(
         key = "additional_bass_enhancement",
         label = "Additional Bass Enhancement",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Passive Radiator (Drone Cone)", "Bass Reflex Port (Front/Rear Vented)",
             "Sealed Box (Acoustic Suspension)", "Other"
@@ -284,22 +291,20 @@ object AudioSpeakerFilterSchema {
     val batteryLife = FilterField(
         key = "battery_life",
         label = "Battery Life",
-        type = FilterType.NumberRange(min = 4f, max = 30f, step = 1f, unit = " Hours", unitIsPrefix = false)
+        type = FilterType.NumberRange(min = 4f, max = 30f, step = 1f, unit = " Hours", unitIsPrefix = false),
+        visibleWhen = FieldDependency("power_supply_mode", setOf(BUILTIN_BATTERY_ID))
     )
 
     val chargingInterface = FilterField(
         key = "charging_interface",
         label = "Charging Interface",
         type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("USB-C", "Micro-USB", "DC Barrel Jack", "AC Power Cable Direct", "Other")
+        options = options("USB-C", "Micro-USB", "DC Barrel Jack", "AC Power Cable Direct", "Other"),
+        visibleWhen = FieldDependency("power_supply_mode", setOf(BUILTIN_BATTERY_ID))
     )
 
-    val ipRating = FilterField(
-        key = "ip_rating",
-        label = "Ingress Protection (IP Rating)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("IPX4", "IPX5", "IPX6", "IPX7", "IP67", "IP68", "Other")
-    )
+    /** Shared with every other category that carries this field — see [IpRatingFields]. */
+    val ipRating = IpRatingFields.ipRating
 
     val features = FilterField(
         key = "features",
@@ -313,8 +318,7 @@ object AudioSpeakerFilterSchema {
             "App EQ Customization",
             "RGB / Rhythm Ambient Lighting",
             "Power Bank Function (Reverse Phone Charging)",
-            "Physical Remote Control Included",
-            "Other"
+            "Physical Remote Control Included"
         )
     )
 

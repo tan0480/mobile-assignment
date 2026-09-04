@@ -27,8 +27,6 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ViewList
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Badge
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -58,6 +56,7 @@ import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.model.FilterState
 import com.example.gadgetmover.model.ListingType
+import com.example.gadgetmover.model.LocationRadiusFilter
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductCategory
 import com.example.gadgetmover.model.SortOption
@@ -71,7 +70,6 @@ import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
 import com.example.gadgetmover.screen.explore.filter.CategoryPickerSheet
-import com.example.gadgetmover.screen.explore.filter.DynamicFilterBottomSheet
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.util.formatMoney
 import androidx.compose.material.icons.filled.Search
@@ -80,7 +78,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-// Round-trips FilterState/CategoryFilterState through JSON so rememberSaveable can restore the
+// Round-trips FilterState through JSON so rememberSaveable can restore the
 // user's in-progress search/filters after navigating into Product Detail and back — this screen
 // is fully disposed while that one's on top, so plain `remember` would otherwise reset them to
 // whatever initialQuery/initialCategory/initialTransactionType Home last requested.
@@ -88,18 +86,23 @@ private val filterStateSaver = Saver<FilterState, String>(
     save = { Json.encodeToString(it) },
     restore = { Json.decodeFromString(it) }
 )
-private val categoryFilterStateSaver = Saver<CategoryFilterState, String>(
-    save = { Json.encodeToString(it) },
-    restore = { Json.decodeFromString(it) }
-)
-
 @Composable
 fun ExploreScreen(
     initialQuery: String = "",
     initialCategory: ProductCategory? = null,
     initialTransactionType: ListingType? = null,
     onProductClick: (Product) -> Unit,
-    onUserClick: (User) -> Unit = {}
+    onUserClick: (User) -> Unit = {},
+    onSearchUsersClick: () -> Unit = {},
+    pickedLocationFilter: LocationRadiusFilter? = null,
+    onLocationFilterClick: () -> Unit = {},
+    categoryFilterState: CategoryFilterState = CategoryFilterState(),
+    appliedFilterCategory: ProductCategory? = null,
+    appliedFilterVersion: Long = 0L,
+    openCategoryPicker: Boolean = false,
+    onCategoryPickerOpened: () -> Unit = {},
+    onCategoryFilterStateChange: (CategoryFilterState) -> Unit = {},
+    onOpenFilters: (ProductCategory) -> Unit = {}
 ) {
     var filterState by rememberSaveable(stateSaver = filterStateSaver) {
         mutableStateOf(
@@ -110,14 +113,33 @@ fun ExploreScreen(
             )
         )
     }
-    var showFilterSheet by remember { mutableStateOf(false) }
+    // `rememberSaveable`, not `remember`: tapping "Browse Near Me" inside the filter sheet
+    // navigates to a separate full-screen destination (see `onLocationFilterClick`), which tears
+    // down this composable's plain `remember` state — without this the sheet would silently stay
+    // closed on the way back instead of reopening with the picked radius applied.
     var showCategoryPicker by remember { mutableStateOf(false) }
+    LaunchedEffect(openCategoryPicker) {
+        if (openCategoryPicker) {
+            showCategoryPicker = true
+            onCategoryPickerOpened()
+        }
+    }
+    LaunchedEffect(appliedFilterVersion) {
+        if (appliedFilterVersion > 0L && appliedFilterCategory != null) {
+            filterState = filterState.copy(categories = setOf(appliedFilterCategory))
+        }
+    }
+    // Applied once whenever a new (or cleared) radius comes back from LocationRadiusFilterScreen —
+    // `filterState` itself is `rememberSaveable` so it otherwise just carries the value forward
+    // across navigation on its own.
+    LaunchedEffect(pickedLocationFilter) {
+        if (filterState.locationFilter != pickedLocationFilter) {
+            filterState = filterState.copy(locationFilter = pickedLocationFilter)
+        }
+    }
     var isGridView by rememberSaveable { mutableStateOf(true) }
 
     val selectedCategory = filterState.categories.singleOrNull()
-    var categoryFilterState by rememberSaveable(selectedCategory, stateSaver = categoryFilterStateSaver) {
-        mutableStateOf(CategoryFilterState())
-    }
     val combinedSchema = remember(selectedCategory) {
         CategoryFilterSchema(
             sections = CommonFilterFields.fields + (selectedCategory?.let { CategoryFilterRegistry.schemaFor(it) }?.sections ?: emptyList())
@@ -160,7 +182,9 @@ fun ExploreScreen(
                 isRefreshing = false
             }
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -173,41 +197,37 @@ fun ExploreScreen(
             OutlinedTextField(
                 value = filterState.query,
                 onValueChange = { filterState = filterState.copy(query = it) },
-                placeholder = { Text("Search items or user") },
+                placeholder = { Text("Search for items") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(14.dp),
                 singleLine = true
             )
-            val activeFilterCount = categoryFilterState.activeFieldCount(combinedSchema)
-            BadgedBox(badge = {
-                if (activeFilterCount > 0) {
-                    Badge { Text(activeFilterCount.toString()) }
-                }
-            }) {
-                IconButton(
-                    onClick = {
-                        if (selectedCategory != null) showFilterSheet = true else showCategoryPicker = true
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Icon(Icons.Filled.Tune, contentDescription = "Filters") // TODO: swap with custom ImageVector
-                }
+            IconButton(
+                onClick = {
+                    if (selectedCategory != null) onOpenFilters(selectedCategory) else showCategoryPicker = true
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Icon(Icons.Filled.Tune, contentDescription = "Filters")
             }
         }
 
+        SearchUsersBanner(onClick = onSearchUsersClick)
         if (userResults.isNotEmpty()) {
             UserResultsRow(users = userResults, onUserClick = onUserClick)
         }
 
-        CategoryPillRow(
+        CategorySection(
             selected = selectedCategory,
             onSelect = { category ->
                 filterState = filterState.copy(categories = if (category != null) setOf(category) else emptySet())
-            }
+                onCategoryFilterStateChange(CategoryFilterState())
+            },
+            onSeeAll = { showCategoryPicker = true }
         )
 
         TransactionTypeTabs(
@@ -236,12 +256,12 @@ fun ExploreScreen(
                     onSelect = { filterState = filterState.copy(sortBy = it) }
                 )
                 ViewToggleButton(
-                    icon = Icons.Filled.GridView, // TODO: swap with custom ImageVector
+                    icon = Icons.Filled.GridView,
                     selected = isGridView,
                     onClick = { isGridView = true }
                 )
                 ViewToggleButton(
-                    icon = Icons.Filled.ViewList, // TODO: swap with custom ImageVector
+                    icon = Icons.Filled.ViewList,
                     selected = !isGridView,
                     onClick = { isGridView = false }
                 )
@@ -252,7 +272,7 @@ fun ExploreScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.SearchOff, // TODO: swap with custom ImageVector
+                        Icons.Filled.SearchOff,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -291,24 +311,9 @@ fun ExploreScreen(
             onDismiss = { showCategoryPicker = false },
             onSelect = { category ->
                 filterState = filterState.copy(categories = setOf(category))
+                onCategoryFilterStateChange(CategoryFilterState())
                 showCategoryPicker = false
-                showFilterSheet = true
-            }
-        )
-    }
-
-    if (showFilterSheet && selectedCategory != null) {
-        DynamicFilterBottomSheet(
-            category = selectedCategory,
-            filterState = categoryFilterState,
-            onDismiss = { showFilterSheet = false },
-            onApply = {
-                categoryFilterState = it
-                showFilterSheet = false
-            },
-            onReset = {
-                categoryFilterState = CategoryFilterState()
-                showFilterSheet = false
+                onOpenFilters(category)
             }
         )
     }
@@ -392,6 +397,36 @@ private fun UserResultCard(user: User, onClick: () -> Unit) {
     }
 }
 
+/** "Categories" header + "See All" (opens [com.example.gadgetmover.screen.explore.filter.CategoryPickerSheet], same sheet the filter icon opens when no category is selected yet) above the pill row — gives the row its own section identity instead of running straight on from [SearchUsersBanner]/[UserResultsRow] above it. */
+@Composable
+private fun CategorySection(selected: ProductCategory?, onSelect: (ProductCategory?) -> Unit, onSeeAll: () -> Unit) {
+    Column(modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Categories",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                "See All",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onSeeAll)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        CategoryPillRow(selected = selected, onSelect = onSelect)
+    }
+}
+
 @Composable
 private fun CategoryPillRow(selected: ProductCategory?, onSelect: (ProductCategory?) -> Unit) {
     LazyRow(
@@ -399,13 +434,12 @@ private fun CategoryPillRow(selected: ProductCategory?, onSelect: (ProductCatego
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            PillChip(label = "All", selected = selected == null, onClick = { onSelect(null) })
+            PillChip(label = "All", selected = selected == null, large = true, onClick = { onSelect(null) })
         }
         items(ProductCategory.entries) { category ->
-            PillChip(label = category.label, selected = selected == category, onClick = { onSelect(category) })
+            PillChip(label = category.label, selected = selected == category, large = true, onClick = { onSelect(category) })
         }
     }
-    Spacer(modifier = Modifier.height(8.dp))
 }
 
 @Composable
@@ -423,17 +457,25 @@ private fun TransactionTypeTabs(selected: ListingType?, onSelect: (ListingType?)
 }
 
 @Composable
-private fun PillChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun PillChip(label: String, selected: Boolean, large: Boolean = false, onClick: () -> Unit) {
     val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
     val fg = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(if (large) 24.dp else 20.dp))
             .background(bg)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(
+                horizontal = if (large) 20.dp else 16.dp,
+                vertical = if (large) 10.dp else 8.dp
+            )
     ) {
-        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        Text(
+            label,
+            color = fg,
+            style = if (large) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
+            maxLines = 1
+        )
     }
 }
 
@@ -497,4 +539,3 @@ private fun ViewToggleButton(icon: androidx.compose.ui.graphics.vector.ImageVect
 }
 
 private fun buildResultCountLabel(count: Int): String = "$count items nearby"
-

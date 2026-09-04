@@ -91,6 +91,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -112,14 +113,18 @@ import com.example.gadgetmover.model.filter.CategoryFilterRegistry
 import com.example.gadgetmover.model.filter.CategoryFilterState
 import com.example.gadgetmover.model.filter.FilterField
 import com.example.gadgetmover.model.filter.isFilled
+import com.example.gadgetmover.model.filter.isValidForListing
 import com.example.gadgetmover.model.filter.isVisible
 import com.example.gadgetmover.screen.checkout.ShippingTier
 import com.example.gadgetmover.screen.explore.filter.DynamicFilterField
 import com.example.gadgetmover.util.parseListingNumber
+import com.example.gadgetmover.util.resolveSellerLocation
 import com.example.gadgetmover.util.sanitizeMoneyInput
 import com.example.gadgetmover.util.validateListingNumbers
 
 import com.example.gadgetmover.ui.theme.BrandOrange
+import com.example.gadgetmover.util.ListingCompletenessScore
+import com.example.gadgetmover.util.ListingScoreCalculator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -347,7 +352,7 @@ internal fun ListingWizardScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                     Text(
                         "List an item",
@@ -363,7 +368,7 @@ internal fun ListingWizardScreen(
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Filled.AddAPhoto, // TODO: swap with custom ImageVector
+                        Icons.Filled.AddAPhoto,
                         contentDescription = null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -516,36 +521,55 @@ internal fun ListingWizardScreen(
     }
     BackHandler(enabled = step > 0 || showStepZeroBack, onBack = handleBack)
 
+    // Hoisted out of `StepTechnicalSpecs` so the topBar (below) can pin a compact version of this
+    // while the seller scrolls the specs list — otherwise it's only visible at the very top of the
+    // step, defeating the point of live feedback while filling in fields further down.
+    val specSchema = remember(draft.category) { draft.category?.let { CategoryFilterRegistry.schemaFor(it) } }
+    val specCompleteness = specSchema?.let { ListingScoreCalculator.score(it, draft.categorySpecs) }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (step > 0 || showStepZeroBack) {
-                    IconButton(
-                        onClick = handleBack,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") // TODO: swap with custom ImageVector
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (step > 0 || showStepZeroBack) {
+                        IconButton(
+                            onClick = handleBack,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(44.dp))
                     }
-                } else {
+                    Text(
+                        screenTitle,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
                     Spacer(modifier = Modifier.size(44.dp))
                 }
-                Text(
-                    screenTitle,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.size(44.dp))
+                // Shown once a category is picked and the seller has moved past the Category step
+                // itself (step 1) — showing it there too would just duplicate what `StepCategory`
+                // is already displaying front and center.
+                if (draft.category != null && step > 1) {
+                    CategoryBadgeRow(draft.category)
+                }
+                // Pinned (not inside the scrollable step content) so it stays visible while the
+                // seller scrolls through the specs fields below — see `specCompleteness` above.
+                if (step == 3 && specCompleteness != null) {
+                    StickySpecCompletenessBar(specCompleteness)
+                }
             }
         }
     ) { padding ->
@@ -647,6 +671,13 @@ internal fun ListingWizardScreen(
                     draft.copy(meetupLocations = draft.meetupLocations + MeetupLocation(UUID.randomUUID().toString(), name, pick.address, pick.latitude, pick.longitude))
                 )
                 viewModel.setPendingMeetupPick(null)
+                // Best-effort, silent — lets buyers filter by state (see CommonFilterFields.sellerState)
+                // without asking the seller to fill in a separate address field just for that.
+                scope.launch {
+                    resolveSellerLocation(context, pick.latitude, pick.longitude)?.let { resolved ->
+                        AuthRepository.updateSellerLocation(resolved.city, resolved.state)
+                    }
+                }
             }
         )
     }
@@ -911,7 +942,14 @@ private fun isStepValid(step: Int, draft: ListingDraft): Boolean = when (step) {
         draft.description.length <= DESCRIPTION_CHAR_LIMIT &&
         draft.fulfillmentMethods.isNotEmpty() &&
         (FulfillmentMethod.MEETUP !in draft.fulfillmentMethods || draft.meetupLocations.isNotEmpty())
-    3 -> requiredBrandField(draft.category)?.let { draft.categorySpecs.valueFor(it.key).isFilled(it) } ?: true
+    3 -> {
+        val brandFilled = requiredBrandField(draft.category)?.let { draft.categorySpecs.valueFor(it.key).isFilled(it) } ?: true
+        val schema = draft.category?.let { CategoryFilterRegistry.schemaFor(it) }
+        val specsInBounds = schema?.sections.orEmpty()
+            .filter { it.isVisible(draft.categorySpecs) }
+            .all { field -> draft.categorySpecs.valueFor(field.key).isValidForListing(field) }
+        brandFilled && specsInBounds
+    }
     5 -> validateListingNumbers(
         listingType = draft.listingType,
         price = draft.price,
@@ -1015,7 +1053,7 @@ private fun StepTransactionType(draft: ListingDraft, onChange: (ListingDraft) ->
                     ListingType.BUY -> Icons.Filled.AttachMoney
                     ListingType.RENT -> Icons.Filled.Schedule
                     ListingType.BOTH -> Icons.AutoMirrored.Filled.CompareArrows
-                }, // TODO: swap with custom ImageVector
+                },
                 selected = draft.listingType == type,
                 onClick = { onChange(draft.copy(listingType = type)) }
             )
@@ -1126,7 +1164,7 @@ private fun StepConditionAndBasics(draft: ListingDraft, onChange: (ListingDraft)
                             Text(location.address, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                         IconButton(onClick = { onChange(draft.copy(meetupLocations = draft.meetupLocations - location)) }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Remove location") // TODO: swap with custom ImageVector
+                            Icon(Icons.Filled.Close, contentDescription = "Remove location")
                         }
                     }
                 }
@@ -1170,6 +1208,86 @@ private fun StepTechnicalSpecs(draft: ListingDraft, onChange: (ListingDraft) -> 
             )
             Spacer(modifier = Modifier.height(18.dp))
         }
+    }
+}
+
+/** Compact "Category: X" row pinned in the wizard's topBar once a category is picked (see call site) — a lightweight reminder of which category's schema is driving the rest of the wizard, without repeating `StepCategory`'s own full picker UI. */
+@Composable
+private fun CategoryBadgeRow(category: ProductCategory) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Category",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                category.label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Live "Spec Completeness: 80%" feedback, pinned in the wizard's topBar (not scrolled away) for
+ * the whole Technical Specs step — recomputed on every keystroke/selection since it just reads
+ * [draft.categorySpecs] via [ListingScoreCalculator], with a tier label/color that tells the
+ * seller how close they are to the full [+50% search boost][ListingCompletenessScore.boostMultiplier]
+ * a fully-specced listing gets (see [screen.home.HomeScreen]/[screen.explore.ExploreScreen] ranking).
+ * Deliberately compact (single-line label + thin bar, no caption) since it's competing for
+ * permanent screen space with the topBar's title row and — once past the Category step — the
+ * [CategoryBadgeRow] above it.
+ */
+@Composable
+private fun StickySpecCompletenessBar(completeness: ListingCompletenessScore) {
+    val percent = completeness.percent
+    val (label, color) = when {
+        percent > 85 -> "✨ Max Boost (+50%)" to BrandOrange
+        percent >= 50 -> "Good visibility" to MaterialTheme.colorScheme.primary
+        else -> "Add specs to boost" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Spec Completeness: $percent%", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        LinearProgressIndicator(
+            progress = { completeness.completenessRatio },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     }
 }
 
