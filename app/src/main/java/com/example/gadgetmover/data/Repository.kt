@@ -10,6 +10,7 @@ import com.example.gadgetmover.model.ChatThread
 import com.example.gadgetmover.model.CheckoutDetails
 import com.example.gadgetmover.model.DepositStatus
 import com.example.gadgetmover.model.FilterState
+import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.model.Message
 import com.example.gadgetmover.model.MessageMetadata
@@ -31,6 +32,8 @@ import com.example.gadgetmover.model.SortOption
 import com.example.gadgetmover.model.User
 import com.example.gadgetmover.model.WalletTransaction
 import com.example.gadgetmover.model.WalletTransactionType
+import com.example.gadgetmover.util.ListingScoreCalculator
+import com.example.gadgetmover.util.haversineDistanceKm
 import io.github.jan.supabase.auth.OtpType
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
@@ -90,7 +93,11 @@ object ProductRepository {
 
     fun getById(id: String): Product? = _products.find { it.id == id }
 
+    /** Home's "Featured Listings" — the app's de facto recommendation rail. Ranked by
+     * [ListingScoreCalculator]'s completeness boost, same as [search]'s default [SortOption.RELEVANCE]
+     * order, so a fully-specced listing surfaces above an otherwise-equal sparse one here too. */
     fun getFeatured(): List<Product> = browsable.filter { it.isFeatured }
+        .sortedByDescending { ListingScoreCalculator.score(it).boostMultiplier }
 
     fun getByCategory(category: com.example.gadgetmover.model.ProductCategory): List<Product> =
         _products.filter { it.category == category }
@@ -158,7 +165,8 @@ object ProductRepository {
                     sellerName = profile?.username.orEmpty(),
                     sellerRating = profile?.rating ?: 0f,
                     isSellerVerified = profile?.isVerified ?: false,
-                    sellerAvatarUrl = profile?.avatarUrl.orEmpty()
+                    sellerAvatarUrl = profile?.avatarUrl.orEmpty(),
+                    sellerState = profile?.state.orEmpty()
                 )
             }
             _products.clear()
@@ -286,8 +294,23 @@ object ProductRepository {
             effectivePrice >= filter.priceRange.start && effectivePrice <= filter.priceRange.endInclusive
         }
 
+        filter.locationFilter?.let { location ->
+            results = results.filter { product ->
+                FulfillmentMethod.MEETUP in product.fulfillmentMethods &&
+                    product.meetupLocations.any { spot ->
+                        haversineDistanceKm(location.latitude, location.longitude, spot.latitude, spot.longitude) <= location.radiusKm
+                    }
+            }
+        }
+
         results = when (filter.sortBy) {
-            SortOption.RELEVANCE -> results
+            // No other relevance signal exists yet — baseRankingScore is a uniform 1.0 for every
+            // listing — so this reduces to ranking purely by completeness boost: a fully-specced
+            // listing (boostMultiplier 1.5x) ranks above an otherwise-equal sparse one (1.0x).
+            SortOption.RELEVANCE -> results.sortedByDescending { product ->
+                val baseRankingScore = 1.0f
+                baseRankingScore * ListingScoreCalculator.score(product).boostMultiplier
+            }
             SortOption.PRICE_LOW_HIGH -> results.sortedBy { it.price ?: it.rentalRatePerDay ?: 0.0 }
             SortOption.PRICE_HIGH_LOW -> results.sortedByDescending { it.price ?: it.rentalRatePerDay ?: 0.0 }
             SortOption.NEWEST -> results
@@ -488,6 +511,8 @@ object AuthRepository {
                 set("phone_number", updated.phone)
                 set("location", updated.location)
                 set("avatar_url", updated.avatarUrl)
+                set("city", updated.city)
+                set("state", updated.state)
             }) {
                 filter { eq("id", updated.id) }
             }
@@ -495,6 +520,55 @@ object AuthRepository {
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /**
+     * Opportunistically records the seller's city/state — reverse-geocoded from a meet-up
+     * location they just picked while creating a listing (see `util/SellerLocationResolver.kt`
+     * and `ListingWizardScreen`'s meet-up-confirm step) — onto their own profile, so buyers can
+     * later narrow listings by [com.example.gadgetmover.model.filter.CommonFilterFields.sellerState].
+     * Best-effort: a failure here never blocks publishing the listing itself.
+     */
+    suspend fun updateSellerLocation(city: String, state: String) {
+        val user = currentUser.value ?: return
+        try {
+            supabase.from("profiles").update({
+                set("city", city)
+                set("state", state)
+            }) {
+                filter { eq("id", user.id) }
+            }
+            currentUser.value = user.copy(city = city, state = state)
+        } catch (e: Exception) {
+            // Best-effort — the listing itself still publishes fine either way.
+        }
+    }
+
+    private const val AVATARS_BUCKET = "avatars"
+
+    /**
+     * Uploads the seller's already-cropped, square JPEG to the public `avatars` bucket at
+     * `{userId}/avatar.jpg` (overwriting any previous photo via `upsert = true`), then persists
+     * the resulting public URL onto the profile row and reflects it into [currentUser]
+     * immediately via [updateCurrentUser]. The square crop itself is done client-side
+     * (AvatarCropDialog) — every place this app displays an avatar already clips it into a
+     * circle, so a square source is all a circular *display* needs. Returns null on any failure
+     * (network, upload, or the profile-row update) so the caller can show a single generic error.
+     */
+    suspend fun uploadAvatar(bytes: ByteArray): String? {
+        val user = currentUser.value ?: return null
+        return try {
+            val bucket = supabase.storage.from(AVATARS_BUCKET)
+            val path = "${user.id}/avatar.jpg"
+            bucket.upload(path, bytes) { upsert = true }
+            // Cache-busted so AsyncImage/Coil's own URL-keyed cache doesn't keep showing the
+            // previous photo right after a re-upload to this same path.
+            val url = "${bucket.publicUrl(path)}?t=${System.currentTimeMillis()}"
+            val success = updateCurrentUser(user.copy(avatarUrl = url))
+            if (success) url else null
+        } catch (e: Exception) {
+            null
         }
     }
 

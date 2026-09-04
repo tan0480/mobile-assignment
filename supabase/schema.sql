@@ -49,6 +49,13 @@ alter table public.profiles add column if not exists stripe_customer_id text;
 -- so every pre-existing email/password account is unaffected by this column's addition.
 alter table public.profiles add column if not exists has_password boolean not null default true;
 
+-- Seller's own city/state, resolved client-side (Geocoder) from a meet-up location they pick
+-- while creating a listing (see ListingWizardScreen / AuthRepository.updateSellerLocation) —
+-- not asked for at registration. `state` is always one of MalaysiaStates.kt's 16 entries (or
+-- blank), matched by the buyer-facing "State" common filter (CommonFilterFields.sellerState).
+alter table public.profiles add column if not exists city text not null default '';
+alter table public.profiles add column if not exists state text not null default '';
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles are publicly readable" on public.profiles;
@@ -83,11 +90,22 @@ begin
     -- has_password reads the real signup provider straight off auth.users' own metadata
     -- (never something the client could claim) — 'email' means a password was actually set at
     -- signup, anything else (e.g. 'google') means the account only has native-auth credentials.
-    insert into public.profiles (id, email, has_password)
+    --
+    -- avatar_url pre-populates from the Google ID token's own photo claim when one signed up via
+    -- Google (Supabase's Google provider surfaces it as either 'avatar_url' or 'picture' in
+    -- raw_user_meta_data depending on how the token was minted, so both are checked); a standard
+    -- email registration has no such claim, so it falls back to a per-user identicon instead of
+    -- starting blank.
+    insert into public.profiles (id, email, has_password, avatar_url)
     values (
         new.id,
         coalesce(new.email, ''),
-        coalesce(new.raw_app_meta_data->>'provider', 'email') = 'email'
+        coalesce(new.raw_app_meta_data->>'provider', 'email') = 'email',
+        coalesce(
+            nullif(new.raw_user_meta_data->>'avatar_url', ''),
+            nullif(new.raw_user_meta_data->>'picture', ''),
+            'https://api.dicebear.com/7.x/identicon/png?seed=' || new.id
+        )
     );
     return new;
 end;
@@ -1541,6 +1559,32 @@ drop policy if exists "reviewers can upload their own review photos" on storage.
 create policy "reviewers can upload their own review photos"
     on storage.objects for insert
     with check (bucket_id = 'review-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ============================================================================
+-- 15. Storage: avatars bucket
+-- Profile photos, one object per user at `{userId}/avatar.jpg`, overwritten on every re-upload
+-- (the app calls upload(..., upsert = true) — see AuthRepository.uploadAvatar). Public bucket
+-- (avatars are shown throughout the app to anyone browsing a listing or seller profile), upload
+-- and overwrite both restricted to the owner's own `{uid}/...` folder.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+drop policy if exists "avatars are publicly readable" on storage.objects;
+create policy "avatars are publicly readable"
+    on storage.objects for select
+    using (bucket_id = 'avatars');
+
+drop policy if exists "users can upload their own avatar" on storage.objects;
+create policy "users can upload their own avatar"
+    on storage.objects for insert
+    with check (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
+
+drop policy if exists "users can overwrite their own avatar" on storage.objects;
+create policy "users can overwrite their own avatar"
+    on storage.objects for update
+    using (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
 
 -- ============================================================================
 -- Helpful indexes

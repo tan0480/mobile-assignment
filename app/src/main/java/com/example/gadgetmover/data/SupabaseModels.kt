@@ -47,6 +47,8 @@ data class ProfileRow(
     val email: String = "",
     @SerialName("phone_number") val phoneNumber: String = "",
     val location: String = "",
+    val city: String = "",
+    val state: String = "",
     @SerialName("avatar_url") val avatarUrl: String = "",
     val rating: Float = 0f,
     @SerialName("rating_count") val ratingCount: Int = 0,
@@ -66,6 +68,8 @@ fun ProfileRow.toUser(): User = User(
     rating = rating,
     ratingCount = ratingCount,
     location = location,
+    city = city,
+    state = state,
     joinedDate = createdAt,
     isVerified = isVerified,
     walletBalance = walletBalance,
@@ -117,7 +121,7 @@ data class ProductRow(
 private inline fun <reified T : Enum<T>> enumOrDefault(name: String?, default: T): T =
     name?.let { raw -> enumValues<T>().find { it.name == raw } } ?: default
 
-fun ProductRow.toProduct(sellerName: String, sellerRating: Float, isSellerVerified: Boolean = false, sellerAvatarUrl: String = ""): Product = Product(
+fun ProductRow.toProduct(sellerName: String, sellerRating: Float, isSellerVerified: Boolean = false, sellerAvatarUrl: String = "", sellerState: String = ""): Product = Product(
     id = id,
     title = title,
     description = description,
@@ -133,6 +137,7 @@ fun ProductRow.toProduct(sellerName: String, sellerRating: Float, isSellerVerifi
     sellerName = sellerName,
     sellerRating = sellerRating,
     sellerAvatarUrl = sellerAvatarUrl,
+    sellerState = sellerState,
     location = location,
     postedDate = createdAt,
     isFeatured = isFeatured,

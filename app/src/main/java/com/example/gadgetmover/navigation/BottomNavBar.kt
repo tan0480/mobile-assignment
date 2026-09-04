@@ -19,7 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 
@@ -34,7 +36,13 @@ data class BottomNavItem(
 
 val bottomNavItems = listOf(
     BottomNavItem(Screen.Home.route, "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    BottomNavItem(Screen.Explore.route, "Explore", Icons.Filled.Explore, Icons.Outlined.Explore),
+    BottomNavItem(
+        route = Screen.Explore.createRoute(),
+        label = "Explore",
+        selectedIcon = Icons.Filled.Explore,
+        unselectedIcon = Icons.Outlined.Explore,
+        matchRoute = Screen.Explore.route
+    ),
     BottomNavItem(
         route = Screen.ListingWizard.createRoute(),
         label = "Sell",
@@ -62,17 +70,17 @@ fun GadgetMoverBottomBar(
             NavigationBarItem(
                 selected = selected,
                 onClick = {
-                    if (!selected) {
+                    if (!selected && navController.currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
                         interceptNavigation(item.matchRoute) {
+                            if (navController.currentBackStackEntry?.lifecycle?.currentState != Lifecycle.State.RESUMED) {
+                                return@interceptNavigation
+                            }
                             navController.navigate(item.route) {
-                                // popUpTo(Screen.Home.route) + restoreState reproducibly fails
-                                // to navigate when the tapped tab IS Home itself (the pop target
-                                // and the nav target being the same route breaks restoration, so
-                                // tapping Home from e.g. a category-filtered Explore screen was a
-                                // no-op). None of these screens rely on saved scroll/filter state
-                                // surviving a tab switch anyway, so just clear the back stack.
-                                popUpTo(0)
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
                                 launchSingleTop = true
+                                restoreState = true
                             }
                         }
                     }

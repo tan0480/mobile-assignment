@@ -1,10 +1,15 @@
 package com.example.gadgetmover.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -20,9 +25,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavType
+import androidx.navigation.NavHostController
+import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -41,9 +49,11 @@ import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.data.SettingsRepository
 import com.example.gadgetmover.data.WalletRepository
 import com.example.gadgetmover.model.ListingType
+import com.example.gadgetmover.model.LocationRadiusFilter
 import com.example.gadgetmover.model.OtpPurpose
 import com.example.gadgetmover.model.ProductCategory
 import com.example.gadgetmover.model.RentalOrder
+import com.example.gadgetmover.model.filter.CategoryFilterState
 import com.example.gadgetmover.notification.SystemNotifier
 import com.example.gadgetmover.screen.auth.ForgotPasswordScreen
 import com.example.gadgetmover.screen.auth.IntroScreen
@@ -56,18 +66,21 @@ import com.example.gadgetmover.screen.chat.MessageInboxScreen
 import com.example.gadgetmover.screen.chat.NotificationScreen
 import com.example.gadgetmover.screen.checkout.CheckoutScreen
 import com.example.gadgetmover.screen.explore.ExploreScreen
+import com.example.gadgetmover.screen.explore.LocationRadiusFilterScreen
+import com.example.gadgetmover.screen.explore.SearchUserScreen
+import com.example.gadgetmover.screen.explore.filter.DynamicFilterScreen
 import com.example.gadgetmover.screen.home.HomeScreen
 import com.example.gadgetmover.screen.listing.ListingWizardScreen
 import com.example.gadgetmover.screen.listing.WizardUnsavedChanges
 import com.example.gadgetmover.screen.product.BuyConfirmationScreen
 import com.example.gadgetmover.screen.product.ProductDetailScreen
 import com.example.gadgetmover.screen.profile.SellerProfileScreen
-import com.example.gadgetmover.screen.components.CreatePasswordDialog
 import com.example.gadgetmover.screen.components.LocationPickerScreen
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.screen.components.RequestStartupPermissions
 import com.example.gadgetmover.screen.profile.AccountInfoScreen
 import com.example.gadgetmover.screen.profile.ChangePasswordScreen
+import com.example.gadgetmover.screen.profile.CreatePasswordScreen
 import com.example.gadgetmover.screen.profile.AccountSupportAction
 import com.example.gadgetmover.screen.profile.AnalyticsScreen
 import com.example.gadgetmover.screen.profile.BrowseHistoryScreen
@@ -100,6 +113,22 @@ private val bottomBarRoutes = setOf(
     Screen.Profile.route
 )
 
+/**
+ * Drops taps emitted by an outgoing destination during a transition and makes repeated taps on
+ * the same action idempotent. Navigation moves the current entry below RESUMED immediately, so a
+ * second tap in the same animation window cannot enqueue another copy.
+ */
+private fun NavHostController.navigateSafely(
+    route: String,
+    builder: NavOptionsBuilder.() -> Unit = {}
+) {
+    if (currentBackStackEntry?.lifecycle?.currentState != Lifecycle.State.RESUMED) return
+    navigate(route) {
+        launchSingleTop = true
+        builder()
+    }
+}
+
 @Composable
 fun GadgetMoverNavGraph() {
     RequestStartupPermissions()
@@ -124,6 +153,10 @@ fun GadgetMoverNavGraph() {
     var pendingCategory by remember { mutableStateOf<ProductCategory?>(null) }
     var pendingTransactionType by remember { mutableStateOf<ListingType?>(null) }
     var pendingActivitiesTab by remember { mutableStateOf(0) }
+    var dynamicFilterCategory by remember { mutableStateOf<ProductCategory?>(null) }
+    var exploreCategoryFilterState by remember { mutableStateOf(CategoryFilterState()) }
+    var appliedDynamicFilterCategory by remember { mutableStateOf<ProductCategory?>(null) }
+    var dynamicFilterApplyVersion by remember { mutableStateOf(0L) }
     val scope = rememberCoroutineScope()
 
     // The listing wizard (new-listing draft or an in-progress Edit) reports its unsaved-changes
@@ -140,7 +173,7 @@ fun GadgetMoverNavGraph() {
     // there's genuinely nothing left to pop and we're not already on Home, so it never overrides
     // NavHost's own back handling for a normal push (e.g. Home -> ProductDetail).
     BackHandler(enabled = navController.previousBackStackEntry == null && currentRoute != Screen.Home.route) {
-        val goHome = { navController.navigate(Screen.Home.route) { popUpTo(0); launchSingleTop = true } }
+        val goHome = { navController.navigateSafely(Screen.Home.route) { popUpTo(0); launchSingleTop = true } }
         if (currentRoute == Screen.ListingWizard.route && currentWizardChanges != null) {
             pendingLeaveNav = goHome
         } else {
@@ -150,12 +183,15 @@ fun GadgetMoverNavGraph() {
 
     // A Google sign-in account has no Gadget Mover password yet (see User.hasPassword) — Buy,
     // Rent, and starting a new listing all funnel through this before they're allowed to proceed.
+    // Unlike the direct "Create Password" button on Account Information, this path always confirms
+    // first via [showCreatePasswordPrompt] — the user didn't ask for a password screen, so jumping
+    // straight there without warning would be a surprising interruption to whatever they were doing.
     var pendingAfterPassword by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var showCreatePasswordDialog by remember { mutableStateOf(false) }
+    var showCreatePasswordPrompt by remember { mutableStateOf(false) }
     fun runOrRequirePassword(action: () -> Unit) {
         if (AuthRepository.currentUser.value?.hasPassword == false) {
             pendingAfterPassword = action
-            showCreatePasswordDialog = true
+            showCreatePasswordPrompt = true
         } else {
             action()
         }
@@ -215,6 +251,10 @@ fun GadgetMoverNavGraph() {
         NavHost(
             navController = navController,
             startDestination = startDestination,
+            enterTransition = { fadeIn(tween(200)) },
+            exitTransition = { fadeOut(tween(90)) },
+            popEnterTransition = { fadeIn(tween(200)) },
+            popExitTransition = { fadeOut(tween(90)) },
             // .padding(padding) alone physically pushes every screen below the status bar, which
             // is all Home/Explore/etc. need since they have no top bar of their own. But screens
             // that DO have their own inner Scaffold+TopAppBar (ChatDetailScreen, ProductDetail,
@@ -223,19 +263,22 @@ fun GadgetMoverNavGraph() {
             // reserved the status bar height a second time on top of this padding, doubling the
             // gap above their top bar. consumeWindowInsets marks it consumed for descendants
             // without touching the physical .padding() that the top-bar-less screens still need.
-            modifier = Modifier.padding(padding).consumeWindowInsets(padding)
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding)
+                .consumeWindowInsets(padding)
         ) {
             composable(Screen.Intro.route) {
                 IntroScreen(
                     onStartBrowsingClick = {
                         OnboardingPreferences.markIntroSeen(context)
-                        navController.navigate(Screen.Home.route) {
+                        navController.navigateSafely(Screen.Home.route) {
                             popUpTo(Screen.Intro.route) { inclusive = true }
                         }
                     },
                     onLoginClick = {
                         OnboardingPreferences.markIntroSeen(context)
-                        navController.navigate(Screen.Login.route)
+                        navController.navigateSafely(Screen.Login.route)
                     }
                 )
             }
@@ -243,28 +286,28 @@ fun GadgetMoverNavGraph() {
                 LoginScreen(
                     onBackClick = { navController.popBackStack() },
                     onLoginSuccess = {
-                        navController.navigate(Screen.Home.route) {
+                        navController.navigateSafely(Screen.Home.route) {
                             popUpTo(0)
                         }
                     },
-                    onRegisterClick = { navController.navigate(Screen.Register.route) },
-                    onForgotPasswordClick = { navController.navigate(Screen.ForgotPassword.route) }
+                    onRegisterClick = { navController.navigateSafely(Screen.Register.route) },
+                    onForgotPasswordClick = { navController.navigateSafely(Screen.ForgotPassword.route) }
                 )
             }
             composable(Screen.Register.route) {
                 RegisterScreen(
                     onBackClick = { navController.popBackStack() },
                     onOtpRequired = { email ->
-                        navController.navigate(Screen.OtpVerification.createRoute(email, OtpPurpose.REGISTRATION.name))
+                        navController.navigateSafely(Screen.OtpVerification.createRoute(email, OtpPurpose.REGISTRATION.name))
                     },
-                    onLoginClick = { navController.navigate(Screen.Login.route) }
+                    onLoginClick = { navController.navigateSafely(Screen.Login.route) }
                 )
             }
             composable(Screen.ForgotPassword.route) {
                 ForgotPasswordScreen(
                     onBackClick = { navController.popBackStack() },
                     onSendCode = { email ->
-                        navController.navigate(Screen.OtpVerification.createRoute(email, OtpPurpose.FORGOT_PASSWORD.name))
+                        navController.navigateSafely(Screen.OtpVerification.createRoute(email, OtpPurpose.FORGOT_PASSWORD.name))
                     }
                 )
             }
@@ -283,10 +326,10 @@ fun GadgetMoverNavGraph() {
                     onBackClick = { navController.popBackStack() },
                     onVerified = {
                         when (purpose) {
-                            OtpPurpose.REGISTRATION -> navController.navigate(Screen.Home.route) {
+                            OtpPurpose.REGISTRATION -> navController.navigateSafely(Screen.Home.route) {
                                 popUpTo(0)
                             }
-                            OtpPurpose.FORGOT_PASSWORD -> navController.navigate(Screen.ResetPassword.createRoute(contact)) {
+                            OtpPurpose.FORGOT_PASSWORD -> navController.navigateSafely(Screen.ResetPassword.createRoute(contact)) {
                                 popUpTo(Screen.Login.route) { inclusive = false }
                             }
                         }
@@ -302,7 +345,7 @@ fun GadgetMoverNavGraph() {
                     email = email,
                     onBackClick = { navController.popBackStack() },
                     onResetSuccess = {
-                        navController.navigate(Screen.Login.route) {
+                        navController.navigateSafely(Screen.Login.route) {
                             popUpTo(0)
                         }
                     }
@@ -312,40 +355,155 @@ fun GadgetMoverNavGraph() {
             composable(Screen.Home.route) {
                 HomeScreen(
                     onProductClick = { product ->
-                        navController.navigate(Screen.ProductDetail.createRoute(product.id))
+                        navController.navigateSafely(Screen.ProductDetail.createRoute(product.id))
                     },
                     onCategoryClick = { category ->
                         pendingCategory = category
                         pendingQuery = ""
                         pendingTransactionType = null
-                        navController.navigate(Screen.Explore.route)
+                        navController.navigateSafely(Screen.Explore.createRoute())
                     },
                     onSearchSubmit = { query ->
                         pendingQuery = query
                         pendingCategory = null
                         pendingTransactionType = null
-                        navController.navigate(Screen.Explore.route)
+                        navController.navigateSafely(Screen.Explore.createRoute())
                     },
-                    onSeeAllFeatured = {
+                    onSeeAllCategories = {
                         pendingQuery = ""
                         pendingCategory = null
                         pendingTransactionType = null
-                        navController.navigate(Screen.Explore.route)
+                        navController.navigateSafely(Screen.Explore.createRoute(openCategoryPicker = true))
                     },
-                    onLoginClick = { navController.navigate(Screen.Login.route) }
+                    onLoginClick = { navController.navigateSafely(Screen.Login.route) }
                 )
             }
 
-            composable(Screen.Explore.route) {
+            composable(
+                route = Screen.Explore.route,
+                arguments = listOf(
+                    navArgument("openCategoryPicker") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    }
+                )
+            ) { entry ->
+                val categoryPickerConsumed by entry.savedStateHandle
+                    .getStateFlow("open_category_picker_consumed", false)
+                    .collectAsState()
+                val shouldOpenCategoryPicker =
+                    entry.arguments?.getBoolean("openCategoryPicker") == true && !categoryPickerConsumed
+                val locationLat by entry.savedStateHandle.getStateFlow<Double?>("location_filter_lat", null).collectAsState()
+                val locationLng by entry.savedStateHandle.getStateFlow<Double?>("location_filter_lng", null).collectAsState()
+                val locationAddress by entry.savedStateHandle.getStateFlow<String?>("location_filter_address", null).collectAsState()
+                val locationRadius by entry.savedStateHandle.getStateFlow<Float?>("location_filter_radius", null).collectAsState()
+                val pickedLocationFilter = if (locationLat != null && locationLng != null && locationAddress != null && locationRadius != null) {
+                    LocationRadiusFilter(locationLat!!, locationLng!!, locationAddress!!, locationRadius!!)
+                } else null
+
                 ExploreScreen(
                     initialQuery = pendingQuery,
                     initialCategory = pendingCategory,
                     initialTransactionType = pendingTransactionType,
                     onProductClick = { product ->
-                        navController.navigate(Screen.ProductDetail.createRoute(product.id))
+                        navController.navigateSafely(Screen.ProductDetail.createRoute(product.id))
                     },
                     onUserClick = { user ->
-                        navController.navigate(Screen.SellerProfile.createRoute(user.id))
+                        navController.navigateSafely(Screen.SellerProfile.createRoute(user.id))
+                    },
+                    onSearchUsersClick = { navController.navigateSafely(Screen.SearchUsers.route) },
+                    pickedLocationFilter = pickedLocationFilter,
+                    onLocationFilterClick = { navController.navigateSafely(Screen.LocationRadiusFilter.route) },
+                    categoryFilterState = exploreCategoryFilterState,
+                    appliedFilterCategory = appliedDynamicFilterCategory,
+                    appliedFilterVersion = dynamicFilterApplyVersion,
+                    openCategoryPicker = shouldOpenCategoryPicker,
+                    onCategoryPickerOpened = {
+                        entry.savedStateHandle["open_category_picker_consumed"] = true
+                    },
+                    onCategoryFilterStateChange = { exploreCategoryFilterState = it },
+                    onOpenFilters = { category ->
+                        dynamicFilterCategory = category
+                        navController.navigateSafely(Screen.DynamicFilter.route)
+                    }
+                )
+            }
+
+            composable(Screen.DynamicFilter.route) {
+                val exploreEntry = remember(navController) { navController.getBackStackEntry(Screen.Explore.route) }
+                val locationLat by exploreEntry.savedStateHandle.getStateFlow<Double?>("location_filter_lat", null).collectAsState()
+                val locationLng by exploreEntry.savedStateHandle.getStateFlow<Double?>("location_filter_lng", null).collectAsState()
+                val locationAddress by exploreEntry.savedStateHandle.getStateFlow<String?>("location_filter_address", null).collectAsState()
+                val locationRadius by exploreEntry.savedStateHandle.getStateFlow<Float?>("location_filter_radius", null).collectAsState()
+                val locationFilter = if (locationLat != null && locationLng != null && locationAddress != null && locationRadius != null) {
+                    LocationRadiusFilter(locationLat!!, locationLng!!, locationAddress!!, locationRadius!!)
+                } else null
+                val category = dynamicFilterCategory
+
+                if (category != null) {
+                    DynamicFilterScreen(
+                        category = category,
+                        filterState = exploreCategoryFilterState,
+                        onDismiss = { navController.popBackStack() },
+                        onApply = { selectedCategory, selectedFilters ->
+                            dynamicFilterCategory = selectedCategory
+                            exploreCategoryFilterState = selectedFilters
+                            appliedDynamicFilterCategory = selectedCategory
+                            dynamicFilterApplyVersion += 1
+                            navController.popBackStack()
+                        },
+                        onReset = { selectedCategory ->
+                            dynamicFilterCategory = selectedCategory
+                            exploreCategoryFilterState = CategoryFilterState()
+                            appliedDynamicFilterCategory = selectedCategory
+                            dynamicFilterApplyVersion += 1
+                            navController.popBackStack()
+                        },
+                        locationFilter = locationFilter,
+                        onLocationFilterClick = { navController.navigateSafely(Screen.LocationRadiusFilter.route) }
+                    )
+                } else {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                }
+            }
+
+            composable(Screen.SearchUsers.route) {
+                SearchUserScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onUserClick = { user -> navController.navigateSafely(Screen.SellerProfile.createRoute(user.id)) }
+                )
+            }
+
+            composable(Screen.LocationRadiusFilter.route) {
+                val exploreEntry = remember(navController) { navController.getBackStackEntry(Screen.Explore.route) }
+                val currentLat by exploreEntry.savedStateHandle.getStateFlow<Double?>("location_filter_lat", null).collectAsState()
+                val currentLng by exploreEntry.savedStateHandle.getStateFlow<Double?>("location_filter_lng", null).collectAsState()
+                val currentAddress by exploreEntry.savedStateHandle.getStateFlow<String?>("location_filter_address", null).collectAsState()
+                val currentRadius by exploreEntry.savedStateHandle.getStateFlow<Float?>("location_filter_radius", null).collectAsState()
+                val currentFilter = if (currentLat != null && currentLng != null && currentAddress != null && currentRadius != null) {
+                    LocationRadiusFilter(currentLat!!, currentLng!!, currentAddress!!, currentRadius!!)
+                } else null
+
+                LocationRadiusFilterScreen(
+                    initial = currentFilter,
+                    onBackClick = { navController.popBackStack() },
+                    onConfirm = { filter ->
+                        exploreEntry.savedStateHandle.apply {
+                            set("location_filter_lat", filter.latitude)
+                            set("location_filter_lng", filter.longitude)
+                            set("location_filter_address", filter.address)
+                            set("location_filter_radius", filter.radiusKm)
+                        }
+                        navController.popBackStack()
+                    },
+                    onClear = {
+                        exploreEntry.savedStateHandle.apply {
+                            set<Double?>("location_filter_lat", null)
+                            set<Double?>("location_filter_lng", null)
+                            set<String?>("location_filter_address", null)
+                            set<Float?>("location_filter_radius", null)
+                        }
+                        navController.popBackStack()
                     }
                 )
             }
@@ -374,19 +532,19 @@ fun GadgetMoverNavGraph() {
                         if (existingProduct != null) {
                             navController.popBackStack()
                         } else {
-                            navController.navigate(Screen.Home.route) {
+                            navController.navigateSafely(Screen.Home.route) {
                                 popUpTo(Screen.Home.route) { inclusive = false }
                             }
                         }
                     },
-                    onLoginClick = { navController.navigate(Screen.Login.route) },
+                    onLoginClick = { navController.navigateSafely(Screen.Login.route) },
                     pickedMeetupLocation = pickedLocation,
                     onPickMeetupLocation = {
                         entry.savedStateHandle.remove<Double>("picked_lat")
                         entry.savedStateHandle.remove<Double>("picked_lng")
                         entry.savedStateHandle.remove<String>("picked_address")
                         entry.savedStateHandle.remove<String>("picked_name")
-                        navController.navigate(Screen.LocationPicker.route)
+                        navController.navigateSafely(Screen.LocationPicker.route)
                     },
                     onUnsavedChangesChanged = { currentWizardChanges = it }
                 )
@@ -408,20 +566,20 @@ fun GadgetMoverNavGraph() {
                         product = product,
                         onBackClick = { navController.popBackStack() },
                         onBuyNowClick = {
-                            runOrRequirePassword { navController.navigate(Screen.Checkout.createRoute(it.id, ListingType.BUY.name)) }
+                            runOrRequirePassword { navController.navigateSafely(Screen.Checkout.createRoute(it.id, ListingType.BUY.name)) }
                         },
                         onRentClick = {
-                            runOrRequirePassword { navController.navigate(Screen.Checkout.createRoute(it.id, ListingType.RENT.name)) }
+                            runOrRequirePassword { navController.navigateSafely(Screen.Checkout.createRoute(it.id, ListingType.RENT.name)) }
                         },
                         onMessageSellerClick = {
                             scope.launch {
                                 val thread = ChatRepository.findOrCreateThreadForProduct(it)
-                                navController.navigate(Screen.ChatDetail.createRoute(thread.id))
+                                navController.navigateSafely(Screen.ChatDetail.createRoute(thread.id))
                             }
                         },
-                        onEditClick = { navController.navigate(Screen.ListingWizard.createRoute(it.id)) },
-                        onLoginRequired = { navController.navigate(Screen.Login.route) },
-                        onSellerClick = { navController.navigate(Screen.SellerProfile.createRoute(it.sellerId)) }
+                        onEditClick = { navController.navigateSafely(Screen.ListingWizard.createRoute(it.id)) },
+                        onLoginRequired = { navController.navigateSafely(Screen.Login.route) },
+                        onSellerClick = { navController.navigateSafely(Screen.SellerProfile.createRoute(it.sellerId)) }
                     )
                 }
             }
@@ -436,8 +594,8 @@ fun GadgetMoverNavGraph() {
                     sellerId = sellerId,
                     sellerNameFallback = fallbackName,
                     onBackClick = { navController.popBackStack() },
-                    onProductClick = { navController.navigate(Screen.ProductDetail.createRoute(it.id)) },
-                    onReviewsClick = { navController.navigate(Screen.SellerReviews.createRoute(sellerId)) }
+                    onProductClick = { navController.navigateSafely(Screen.ProductDetail.createRoute(it.id)) },
+                    onReviewsClick = { navController.navigateSafely(Screen.SellerReviews.createRoute(sellerId)) }
                 )
             }
 
@@ -472,9 +630,9 @@ fun GadgetMoverNavGraph() {
                         pickedAddressId = pickedAddressId,
                         negotiatedPrice = negotiatedPrice,
                         onBackClick = { navController.popBackStack() },
-                        onChangeAddress = { navController.navigate(Screen.SelectShippingAddress.route) },
+                        onChangeAddress = { navController.navigateSafely(Screen.SelectShippingAddress.route) },
                         onOrderConfirmed = { order ->
-                            navController.navigate(Screen.BuyConfirmation.createRoute(order.id)) {
+                            navController.navigateSafely(Screen.BuyConfirmation.createRoute(order.id)) {
                                 popUpTo(Screen.Checkout.route) { inclusive = true }
                             }
                         }
@@ -492,7 +650,7 @@ fun GadgetMoverNavGraph() {
                     BuyConfirmationScreen(
                         order = order,
                         onDoneClick = {
-                            navController.navigate(Screen.Home.route) {
+                            navController.navigateSafely(Screen.Home.route) {
                                 popUpTo(Screen.Home.route) { inclusive = false }
                             }
                         },
@@ -501,10 +659,10 @@ fun GadgetMoverNavGraph() {
                             // Reset the back stack down to Profile first (mirroring the login-success
                             // reset pattern above) so back from My Activities lands on Profile — not on
                             // this now-stale confirmation screen or whatever preceded checkout.
-                            navController.navigate(Screen.Profile.route) {
+                            navController.navigateSafely(Screen.Profile.route) {
                                 popUpTo(0)
                             }
-                            navController.navigate(Screen.MyActivities.route)
+                            navController.navigateSafely(Screen.MyActivities.route)
                         }
                     )
                 }
@@ -512,11 +670,11 @@ fun GadgetMoverNavGraph() {
 
             composable(Screen.MessageInbox.route) {
                 MessageInboxScreen(
-                    onNotificationsClick = { navController.navigate(Screen.Notifications.route) },
+                    onNotificationsClick = { navController.navigateSafely(Screen.Notifications.route) },
                     onThreadClick = { thread ->
-                        navController.navigate(Screen.ChatDetail.createRoute(thread.id))
+                        navController.navigateSafely(Screen.ChatDetail.createRoute(thread.id))
                     },
-                    onLoginClick = { navController.navigate(Screen.Login.route) }
+                    onLoginClick = { navController.navigateSafely(Screen.Login.route) }
                 )
             }
 
@@ -525,7 +683,7 @@ fun GadgetMoverNavGraph() {
                     onBackClick = { navController.popBackStack() },
                     onNotificationClick = { notification ->
                         notification.relatedThreadId?.let { threadId ->
-                            navController.navigate(Screen.ChatDetail.createRoute(threadId))
+                            navController.navigateSafely(Screen.ChatDetail.createRoute(threadId))
                         }
                     }
                 )
@@ -554,7 +712,7 @@ fun GadgetMoverNavGraph() {
                             entry.savedStateHandle.remove<Double>("picked_lng")
                             entry.savedStateHandle.remove<String>("picked_address")
                             entry.savedStateHandle.remove<String>("picked_name")
-                            navController.navigate(Screen.LocationPicker.route)
+                            navController.navigateSafely(Screen.LocationPicker.route)
                         },
                         onLocationConsumed = {
                             entry.savedStateHandle.remove<Double>("picked_lat")
@@ -563,10 +721,10 @@ fun GadgetMoverNavGraph() {
                             entry.savedStateHandle.remove<String>("picked_name")
                         },
                         onProductClick = { productId ->
-                            navController.navigate(Screen.ProductDetail.createRoute(productId))
+                            navController.navigateSafely(Screen.ProductDetail.createRoute(productId))
                         },
                         onNegotiatedCheckout = { productId, type, price ->
-                            runOrRequirePassword { navController.navigate(Screen.Checkout.createRoute(productId, type.name, price)) }
+                            runOrRequirePassword { navController.navigateSafely(Screen.Checkout.createRoute(productId, type.name, price)) }
                         }
                     )
                 }
@@ -576,57 +734,57 @@ fun GadgetMoverNavGraph() {
                 ProfileScreen(
                     onQuickActionClick = { action ->
                         when (action) {
-                            ProfileQuickAction.MY_LISTINGS -> navController.navigate(Screen.MyListings.route)
+                            ProfileQuickAction.MY_LISTINGS -> navController.navigateSafely(Screen.MyListings.route)
                             ProfileQuickAction.PURCHASES -> {
                                 pendingActivitiesTab = 0
-                                navController.navigate(Screen.MyActivities.route)
+                                navController.navigateSafely(Screen.MyActivities.route)
                             }
                             ProfileQuickAction.SALES -> {
                                 pendingActivitiesTab = 1
-                                navController.navigate(Screen.MyActivities.route)
+                                navController.navigateSafely(Screen.MyActivities.route)
                             }
                             ProfileQuickAction.RENTALS -> {
                                 pendingActivitiesTab = 2
-                                navController.navigate(Screen.MyActivities.route)
+                                navController.navigateSafely(Screen.MyActivities.route)
                             }
                             ProfileQuickAction.LEASES -> {
                                 pendingActivitiesTab = 3
-                                navController.navigate(Screen.MyActivities.route)
+                                navController.navigateSafely(Screen.MyActivities.route)
                             }
-                            ProfileQuickAction.WALLET -> runOrRequirePassword { navController.navigate(Screen.Wallet.route) }
-                            ProfileQuickAction.SAVED_ITEMS -> navController.navigate(Screen.SavedItems.route)
-                            ProfileQuickAction.REVIEWS -> navController.navigate(Screen.Reviews.route)
-                            ProfileQuickAction.ANALYTICS -> navController.navigate(Screen.Analytics.route)
-                            ProfileQuickAction.BROWSE_HISTORY -> navController.navigate(Screen.BrowseHistory.route)
-                            ProfileQuickAction.SETTINGS -> navController.navigate(Screen.Settings.route)
-                            ProfileQuickAction.HELP_CENTRE -> navController.navigate(Screen.HelpCentre.route)
+                            ProfileQuickAction.WALLET -> runOrRequirePassword { navController.navigateSafely(Screen.Wallet.route) }
+                            ProfileQuickAction.SAVED_ITEMS -> navController.navigateSafely(Screen.SavedItems.route)
+                            ProfileQuickAction.REVIEWS -> navController.navigateSafely(Screen.Reviews.route)
+                            ProfileQuickAction.ANALYTICS -> navController.navigateSafely(Screen.Analytics.route)
+                            ProfileQuickAction.BROWSE_HISTORY -> navController.navigateSafely(Screen.BrowseHistory.route)
+                            ProfileQuickAction.SETTINGS -> navController.navigateSafely(Screen.Settings.route)
+                            ProfileQuickAction.HELP_CENTRE -> navController.navigateSafely(Screen.HelpCentre.route)
                         }
                     },
                     onAccountSupportClick = { action ->
                         when (action) {
-                            AccountSupportAction.PAYMENT_METHODS -> runOrRequirePassword { navController.navigate(Screen.PaymentMethods.route) }
-                            AccountSupportAction.SHIPPING_ADDRESS -> navController.navigate(Screen.ShippingAddress.route)
+                            AccountSupportAction.PAYMENT_METHODS -> runOrRequirePassword { navController.navigateSafely(Screen.PaymentMethods.route) }
+                            AccountSupportAction.SHIPPING_ADDRESS -> navController.navigateSafely(Screen.ShippingAddress.route)
                         }
                     },
                     onLogoutClick = {
                         scope.launch {
                             AuthRepository.logout()
-                            navController.navigate(Screen.Intro.route) {
+                            navController.navigateSafely(Screen.Intro.route) {
                                 popUpTo(0)
                             }
                         }
                     },
-                    onLoginClick = { navController.navigate(Screen.Login.route) },
-                    onRegisterClick = { navController.navigate(Screen.Register.route) }
+                    onLoginClick = { navController.navigateSafely(Screen.Login.route) },
+                    onRegisterClick = { navController.navigateSafely(Screen.Register.route) }
                 )
             }
 
             composable(Screen.MyActivities.route) {
                 MyActivitiesScreen(
                     onBackClick = { navController.popBackStack() },
-                    onOrderClick = { order -> navController.navigate(Screen.OrderDetail.createRoute(order.id)) },
-                    onRequestReturnClick = { order -> navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
-                    onWriteReviewClick = { order -> navController.navigate(Screen.WriteReview.createRoute(order.id)) },
+                    onOrderClick = { order -> navController.navigateSafely(Screen.OrderDetail.createRoute(order.id)) },
+                    onRequestReturnClick = { order -> navController.navigateSafely(Screen.ReturnRequest.createRoute(order.id)) },
+                    onWriteReviewClick = { order -> navController.navigateSafely(Screen.WriteReview.createRoute(order.id)) },
                     initialTab = pendingActivitiesTab
                 )
             }
@@ -642,10 +800,10 @@ fun GadgetMoverNavGraph() {
                         order = order,
                         onBackClick = { navController.popBackStack() },
                         onDeleted = { navController.popBackStack() },
-                        onRequestReturnClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
-                        onReviewRequestClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
-                        onWriteReviewClick = { navController.navigate(Screen.WriteReview.createRoute(order.id)) },
-                        onProductClick = { navController.navigate(Screen.ProductDetail.createRoute(order.productId)) }
+                        onRequestReturnClick = { navController.navigateSafely(Screen.ReturnRequest.createRoute(order.id)) },
+                        onReviewRequestClick = { navController.navigateSafely(Screen.ReturnRequest.createRoute(order.id)) },
+                        onWriteReviewClick = { navController.navigateSafely(Screen.WriteReview.createRoute(order.id)) },
+                        onProductClick = { navController.navigateSafely(Screen.ProductDetail.createRoute(order.productId)) }
                     )
                 }
             }
@@ -688,16 +846,16 @@ fun GadgetMoverNavGraph() {
                             navController.popBackStack()
                         },
                         pickedAddressId = pickedAddressId,
-                        onChangeAddress = { navController.navigate(Screen.SelectShippingAddress.route) },
+                        onChangeAddress = { navController.navigateSafely(Screen.SelectShippingAddress.route) },
                         pickedMeetupLocation = pickedMeetupLocation,
                         onPickMeetupLocation = {
                             entry.savedStateHandle.remove<Double>("picked_lat")
                             entry.savedStateHandle.remove<Double>("picked_lng")
                             entry.savedStateHandle.remove<String>("picked_address")
                             entry.savedStateHandle.remove<String>("picked_name")
-                            navController.navigate(Screen.LocationPicker.route)
+                            navController.navigateSafely(Screen.LocationPicker.route)
                         },
-                        onContactSupportClick = { navController.navigate(Screen.HelpCentre.route) }
+                        onContactSupportClick = { navController.navigateSafely(Screen.HelpCentre.route) }
                     )
                 }
             }
@@ -706,7 +864,7 @@ fun GadgetMoverNavGraph() {
                 SavedItemsScreen(
                     onBackClick = { navController.popBackStack() },
                     onProductClick = { product ->
-                        navController.navigate(Screen.ProductDetail.createRoute(product.id))
+                        navController.navigateSafely(Screen.ProductDetail.createRoute(product.id))
                     }
                 )
             }
@@ -718,16 +876,16 @@ fun GadgetMoverNavGraph() {
             composable(Screen.ShippingAddress.route) {
                 ShippingAddressScreen(
                     onBackClick = { navController.popBackStack() },
-                    onAddAddress = { navController.navigate(Screen.EditAddress.createRoute(Screen.EditAddress.NEW_ADDRESS_ID)) },
-                    onEditAddress = { address -> navController.navigate(Screen.EditAddress.createRoute(address.id)) }
+                    onAddAddress = { navController.navigateSafely(Screen.EditAddress.createRoute(Screen.EditAddress.NEW_ADDRESS_ID)) },
+                    onEditAddress = { address -> navController.navigateSafely(Screen.EditAddress.createRoute(address.id)) }
                 )
             }
 
             composable(Screen.SelectShippingAddress.route) {
                 ShippingAddressScreen(
                     onBackClick = { navController.popBackStack() },
-                    onAddAddress = { navController.navigate(Screen.EditAddress.createRoute(Screen.EditAddress.NEW_ADDRESS_ID)) },
-                    onEditAddress = { address -> navController.navigate(Screen.EditAddress.createRoute(address.id)) },
+                    onAddAddress = { navController.navigateSafely(Screen.EditAddress.createRoute(Screen.EditAddress.NEW_ADDRESS_ID)) },
+                    onEditAddress = { address -> navController.navigateSafely(Screen.EditAddress.createRoute(address.id)) },
                     selectionMode = true,
                     onAddressSelected = { address ->
                         navController.previousBackStackEntry?.savedStateHandle?.set("selected_address_id", address.id)
@@ -754,7 +912,7 @@ fun GadgetMoverNavGraph() {
                     existing = existing,
                     pickedLocation = pickedLocation,
                     onBackClick = { navController.popBackStack() },
-                    onPickOnMap = { navController.navigate(Screen.LocationPicker.route) },
+                    onPickOnMap = { navController.navigateSafely(Screen.LocationPicker.route) },
                     onSaved = { navController.popBackStack() }
                 )
             }
@@ -778,7 +936,7 @@ fun GadgetMoverNavGraph() {
                 MyListingsScreen(
                     onBackClick = { navController.popBackStack() },
                     onProductClick = { product ->
-                        navController.navigate(Screen.ProductDetail.createRoute(product.id))
+                        navController.navigateSafely(Screen.ProductDetail.createRoute(product.id))
                     }
                 )
             }
@@ -787,8 +945,8 @@ fun GadgetMoverNavGraph() {
                 val successMessage by entry.savedStateHandle.getStateFlow<String?>("wallet_success_message", null).collectAsState()
                 WalletScreen(
                     onBackClick = { navController.popBackStack() },
-                    onAddFundsClick = { navController.navigate(Screen.WalletAddFundsAmount.route) },
-                    onWithdrawClick = { navController.navigate(Screen.WalletWithdrawAmount.route) },
+                    onAddFundsClick = { navController.navigateSafely(Screen.WalletAddFundsAmount.route) },
+                    onWithdrawClick = { navController.navigateSafely(Screen.WalletWithdrawAmount.route) },
                     successMessage = successMessage,
                     onSuccessMessageShown = { entry.savedStateHandle["wallet_success_message"] = null }
                 )
@@ -797,7 +955,7 @@ fun GadgetMoverNavGraph() {
             composable(Screen.WalletAddFundsAmount.route) {
                 WalletAddFundsAmountScreen(
                     onBackClick = { navController.popBackStack() },
-                    onContinue = { amount -> navController.navigate(Screen.WalletAddFundsPayment.createRoute(amount)) }
+                    onContinue = { amount -> navController.navigateSafely(Screen.WalletAddFundsPayment.createRoute(amount)) }
                 )
             }
 
@@ -820,7 +978,7 @@ fun GadgetMoverNavGraph() {
             composable(Screen.WalletWithdrawAmount.route) {
                 WalletWithdrawAmountScreen(
                     onBackClick = { navController.popBackStack() },
-                    onContinue = { amount -> navController.navigate(Screen.WalletWithdrawDestination.createRoute(amount)) }
+                    onContinue = { amount -> navController.navigateSafely(Screen.WalletWithdrawDestination.createRoute(amount)) }
                 )
             }
 
@@ -852,7 +1010,7 @@ fun GadgetMoverNavGraph() {
                 BrowseHistoryScreen(
                     onBackClick = { navController.popBackStack() },
                     onProductClick = { product ->
-                        navController.navigate(Screen.ProductDetail.createRoute(product.id))
+                        navController.navigateSafely(Screen.ProductDetail.createRoute(product.id))
                     }
                 )
             }
@@ -860,7 +1018,7 @@ fun GadgetMoverNavGraph() {
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     onBackClick = { navController.popBackStack() },
-                    onAccountInfoClick = { navController.navigate(Screen.AccountInfo.route) },
+                    onAccountInfoClick = { navController.navigateSafely(Screen.AccountInfo.route) },
                     onRequirePassword = ::runOrRequirePassword
                 )
             }
@@ -869,7 +1027,8 @@ fun GadgetMoverNavGraph() {
                 val successMessage by entry.savedStateHandle.getStateFlow<String?>("account_info_success_message", null).collectAsState()
                 AccountInfoScreen(
                     onBackClick = { navController.popBackStack() },
-                    onChangePasswordClick = { navController.navigate(Screen.ChangePassword.route) },
+                    onChangePasswordClick = { navController.navigateSafely(Screen.ChangePassword.route) },
+                    onCreatePasswordClick = { navController.navigateSafely(Screen.CreatePassword.route) },
                     successMessage = successMessage,
                     onSuccessMessageShown = { entry.savedStateHandle["account_info_success_message"] = null }
                 )
@@ -883,6 +1042,28 @@ fun GadgetMoverNavGraph() {
                         navController.getBackStackEntry(Screen.AccountInfo.route)
                             .savedStateHandle["account_info_success_message"] = "Password changed"
                         navController.popBackStack(Screen.AccountInfo.route, inclusive = false)
+                    }
+                )
+            }
+
+            // Reached either straight from Account Information's "Create Password" button (no
+            // confirmation needed — the user asked for this explicitly) or via [runOrRequirePassword]'s
+            // confirm-first gate for Buy/Rent/List — [pendingAfterPassword] being non-null distinguishes
+            // the two so this one route can serve both without knowing which screen pushed it.
+            composable(Screen.CreatePassword.route) {
+                CreatePasswordScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onCreated = {
+                        val pending = pendingAfterPassword
+                        pendingAfterPassword = null
+                        if (pending != null) {
+                            navController.popBackStack()
+                            pending()
+                        } else {
+                            navController.getBackStackEntry(Screen.AccountInfo.route)
+                                .savedStateHandle["account_info_success_message"] = "Password created"
+                            navController.popBackStack(Screen.AccountInfo.route, inclusive = false)
+                        }
                     }
                 )
             }
@@ -921,16 +1102,29 @@ fun GadgetMoverNavGraph() {
         )
     }
 
-    if (showCreatePasswordDialog) {
-        CreatePasswordDialog(
-            onDismiss = {
-                showCreatePasswordDialog = false
+    if (showCreatePasswordPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                showCreatePasswordPrompt = false
                 pendingAfterPassword = null
             },
-            onCreated = {
-                showCreatePasswordDialog = false
-                pendingAfterPassword?.invoke()
-                pendingAfterPassword = null
+            title = { Text("Create a password") },
+            text = { Text("You signed in with Google. Create a password for your Gadget Mover account before you buy, rent, or list an item.") },
+            confirmButton = {
+                Button(onClick = {
+                    showCreatePasswordPrompt = false
+                    navController.navigateSafely(Screen.CreatePassword.route)
+                }) {
+                    Text("Create Password")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showCreatePasswordPrompt = false
+                    pendingAfterPassword = null
+                }) {
+                    Text("Cancel")
+                }
             }
         )
     }
