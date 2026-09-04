@@ -69,7 +69,6 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var biometricLoginEnabled by remember { mutableStateOf(BiometricPreferences.isLoginEnabled(context)) }
     var biometricPaymentsEnabled by remember { mutableStateOf(BiometricPreferences.isPaymentsEnabled(context)) }
 
     // Turning a biometric toggle on requires a live successful check first — never flips the
@@ -170,24 +169,8 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             SettingsToggleRow(
-                title = "Log in with fingerprint",
-                subtitle = "Confirm it's you with a fingerprint check on app start",
-                checked = biometricLoginEnabled,
-                onCheckedChange = { enable ->
-                    if (enable) {
-                        onRequirePassword {
-                            requestEnableBiometric { biometricLoginEnabled = true; BiometricPreferences.setLoginEnabled(context, true) }
-                        }
-                    } else {
-                        biometricLoginEnabled = false
-                        BiometricPreferences.setLoginEnabled(context, false)
-                    }
-                }
-            )
-            HorizontalDivider()
-            SettingsToggleRow(
-                title = "Fingerprint for payments",
-                subtitle = "Confirm wallet payments and withdrawals with a fingerprint instead of your password",
+                title = "Fingerprint",
+                subtitle = "Use your fingerprint instead of typing your password whenever one is needed",
                 checked = biometricPaymentsEnabled,
                 onCheckedChange = { enable ->
                     if (enable) {

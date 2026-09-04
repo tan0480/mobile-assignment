@@ -76,6 +76,7 @@ import com.example.gadgetmover.model.MessageType
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.FullScreenImageViewer
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.ui.theme.BrandOrange
@@ -99,6 +100,7 @@ fun ChatDetailScreen(
     val messages = ChatRepository.getMessages(thread.id)
     var input by remember { mutableStateOf("") }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -162,7 +164,9 @@ fun ChatDetailScreen(
             ChatRepository.sendLocationMessage(thread, it.latitude, it.longitude, it.address)
             onLocationConsumed()
         }
+        isBackgroundLoading = true
         ChatRepository.refreshFromRemote()
+        isBackgroundLoading = false
         ChatRepository.markThreadRead(thread)
     }
 
@@ -304,8 +308,9 @@ fun ChatDetailScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+                }
+                BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
             }
-        }
 
             // Floats over the chat like the product banner above rather than sitting in a
             // Scaffold bottomBar slot with its own full-width opaque surface — the row itself has

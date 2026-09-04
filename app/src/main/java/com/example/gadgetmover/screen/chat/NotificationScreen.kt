@@ -51,6 +51,7 @@ import com.example.gadgetmover.data.NotificationRepository
 import com.example.gadgetmover.model.Notification
 import com.example.gadgetmover.model.NotificationType
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.util.formatDisplayDate
 import kotlinx.coroutines.launch
 
@@ -61,10 +62,13 @@ fun NotificationScreen(
 ) {
     val notifications = NotificationRepository.notifications
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         NotificationRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -140,6 +144,7 @@ fun NotificationScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }

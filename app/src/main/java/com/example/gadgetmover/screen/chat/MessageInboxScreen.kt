@@ -53,6 +53,7 @@ import com.example.gadgetmover.data.ChatRepository
 import com.example.gadgetmover.data.NotificationRepository
 import com.example.gadgetmover.model.ChatThread
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.util.formatDisplayDate
@@ -72,6 +73,7 @@ fun MessageInboxScreen(
     val sessionRestored by AuthRepository.sessionRestored
     var query by remember { mutableStateOf("") }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     var threadPendingDelete by remember { mutableStateOf<ChatThread?>(null) }
     val scope = rememberCoroutineScope()
     val threads = ChatRepository.threads.filter {
@@ -81,7 +83,11 @@ fun MessageInboxScreen(
     }
 
     LaunchedEffect(isLoggedIn) {
-        if (isLoggedIn) ChatRepository.refreshFromRemote()
+        if (isLoggedIn) {
+            isBackgroundLoading = true
+            ChatRepository.refreshFromRemote()
+            isBackgroundLoading = false
+        }
     }
 
     threadPendingDelete?.let { thread ->
@@ -186,6 +192,7 @@ fun MessageInboxScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AddressRepository
 import com.example.gadgetmover.model.Address
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.SuccessGreen
 import kotlinx.coroutines.launch
@@ -69,11 +70,14 @@ fun ShippingAddressScreen(
 ) {
     var pendingDelete by remember { mutableStateOf<Address?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val addresses = AddressRepository.addresses
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         AddressRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     Scaffold(
@@ -126,6 +130,7 @@ fun ShippingAddressScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 
@@ -194,6 +199,7 @@ private fun AddressRow(address: Address, onSetDefault: () -> Unit, onEdit: () ->
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = address.isDefault, onClick = onSetDefault)
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         "Default address",
                         style = MaterialTheme.typography.labelMedium,

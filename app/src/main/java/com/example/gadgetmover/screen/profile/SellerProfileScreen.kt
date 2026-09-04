@@ -59,6 +59,7 @@ import com.example.gadgetmover.model.ProductCategory
 import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.model.User
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
@@ -78,11 +79,14 @@ fun SellerProfileScreen(
     var statusFilter by remember(sellerId) { mutableStateOf<ProductStatus?>(null) }
     var showStatusSheet by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(sellerId) {
+        isBackgroundLoading = true
         seller = AuthRepository.fetchProfile(sellerId)
         ProductRepository.refreshFromRemote()
+        isBackgroundLoading = false
     }
 
     val allListings = ProductRepository.myListings(sellerId)
@@ -189,6 +193,7 @@ fun SellerProfileScreen(
                     }
                 }
             }
+            BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 

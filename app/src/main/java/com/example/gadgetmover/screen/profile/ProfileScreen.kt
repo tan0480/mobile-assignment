@@ -49,9 +49,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,14 +67,16 @@ import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.OrderRepository
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.data.WalletRepository
-import com.example.gadgetmover.model.OrderStatus
+import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.model.User
+import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.LoginRequiredDialog
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.util.formatDisplayDateOnly
 import com.example.gadgetmover.util.formatMoney
+import kotlinx.coroutines.launch
 
 enum class ProfileQuickAction {
     MY_LISTINGS, PURCHASES, SALES, RENTALS, LEASES, WALLET,
@@ -95,9 +99,24 @@ fun ProfileScreen(
     val user = AuthRepository.currentUser.value
     var showLoginDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun requireLogin(action: () -> Unit) {
         if (isLoggedIn) action() else showLoginDialog = true
+    }
+
+    suspend fun refreshProfile() {
+        OrderRepository.refreshFromRemote()
+        ProductRepository.refreshFromRemote()
+        WalletRepository.refreshFromRemote()
+    }
+
+    // Silent — no loading indicator for this automatic entry refresh (unlike other screens),
+    // per the request that Profile just quietly update in the background. Manual pull-to-refresh
+    // below still shows its usual spinner.
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) refreshProfile()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -105,10 +124,20 @@ fun ProfileScreen(
             onSettingsClick = { requireLogin { onQuickActionClick(ProfileQuickAction.SETTINGS) } }
         )
 
+        AppPullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                scope.launch {
+                    isRefreshing = true
+                    refreshProfile()
+                    isRefreshing = false
+                }
+            },
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        ) {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
@@ -171,6 +200,7 @@ fun ProfileScreen(
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
+        }
         }
     }
 
@@ -384,11 +414,11 @@ private data class MarketplaceItem(
 @Composable
 private fun MarketplaceGrid(onQuickActionClick: (ProfileQuickAction) -> Unit) {
     val currentUser = AuthRepository.currentUser.value
-    val myListingsCount = ProductRepository.myListings(currentUser?.id.orEmpty()).size
+    val myListingsCount = ProductRepository.myListings(currentUser?.id.orEmpty()).count { it.status != ProductStatus.SOLD }
     val purchasesCount = OrderRepository.myPurchases().size
     val salesCount = OrderRepository.mySales().size
-    val activeRentalsCount = OrderRepository.myRentals().count { it.status == OrderStatus.ACTIVE }
-    val pendingLeasesCount = OrderRepository.myLeases().count { it.status == OrderStatus.PENDING }
+    val rentalsCount = OrderRepository.myRentals().size
+    val leasesCount = OrderRepository.myLeases().size
     val savedCount = ProductRepository.getSaved().size
     val reviewCount = currentUser?.ratingCount ?: 0
     val walletBalance = WalletRepository.balance.value
@@ -399,8 +429,8 @@ private fun MarketplaceGrid(onQuickActionClick: (ProfileQuickAction) -> Unit) {
         MarketplaceItem(ProfileQuickAction.MY_LISTINGS, Icons.Filled.Add, Color(0xFF7C3AED), "My listings", "$myListingsCount active"),
         MarketplaceItem(ProfileQuickAction.PURCHASES, Icons.Filled.ShoppingBag, BrandOrange, "Purchases", "$purchasesCount items"),
         MarketplaceItem(ProfileQuickAction.SALES, Icons.Filled.ShoppingCart, Color(0xFF0D9488), "Sales", "$salesCount items"),
-        MarketplaceItem(ProfileQuickAction.RENTALS, Icons.Filled.DateRange, Color(0xFF2563EB), "Rentals", "$activeRentalsCount active"),
-        MarketplaceItem(ProfileQuickAction.LEASES, Icons.Filled.Description, BrandOrange, "Leases", "$pendingLeasesCount pending"),
+        MarketplaceItem(ProfileQuickAction.RENTALS, Icons.Filled.DateRange, Color(0xFF2563EB), "Rentals", "$rentalsCount items"),
+        MarketplaceItem(ProfileQuickAction.LEASES, Icons.Filled.Description, BrandOrange, "Leases", "$leasesCount items"),
         MarketplaceItem(ProfileQuickAction.WALLET, Icons.Filled.Wallet, Color(0xFF16A34A), "Wallet", formatMoney(walletBalance)),
         MarketplaceItem(ProfileQuickAction.SAVED_ITEMS, Icons.Filled.Favorite, Color(0xFFDC2626), "Saved items", "$savedCount saved"),
         MarketplaceItem(ProfileQuickAction.REVIEWS, Icons.Filled.Star, Color(0xFFCA8A04), "Reviews", "$reviewCount reviews"),

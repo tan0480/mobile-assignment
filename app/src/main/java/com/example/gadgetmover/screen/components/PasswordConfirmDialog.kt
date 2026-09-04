@@ -42,12 +42,15 @@ import com.example.gadgetmover.util.biometricAvailability
 import kotlinx.coroutines.launch
 
 /**
- * Confirms it's really the account holder before a money-moving action (wallet checkout payment,
- * withdrawals) that doesn't already go through Stripe's own card-entry step. Tries a fingerprint
- * check first when the user has turned that on in Settings and the device supports it; either way
- * the password field underneath stays available as a fallback, and [onConfirmed] only fires once
- * one of the two has actually succeeded — biometric success never bypasses
- * [AuthRepository.verifyPassword] silently, it's just a faster path to the same gate.
+ * Confirms it's really the account holder before a sensitive action (wallet checkout payment,
+ * withdrawals, saving profile changes) that doesn't already go through its own re-auth step.
+ * Tries a fingerprint check first when the user has turned that on in Settings and the device
+ * supports it — the password dialog isn't shown at all while that's in progress, only appearing
+ * once it's actually needed (biometric unavailable, or the user cancelled/failed it and needs the
+ * fallback). [onConfirmed] only fires once one of the two has actually succeeded — biometric
+ * success never bypasses [AuthRepository.verifyPassword] silently, it's just a faster path to the
+ * same gate. The system biometric prompt itself uses the caller's own [title] rather than a fixed
+ * "payment"-flavored one, since this dialog is also used for non-payment confirmations.
  */
 @Composable
 fun PasswordConfirmDialog(
@@ -70,84 +73,91 @@ fun PasswordConfirmDialog(
         BiometricPreferences.isPaymentsEnabled(context) &&
         biometricAvailability(activity) == BiometricAvailability.AVAILABLE
 
+    // Starts hidden when biometric is the first thing to try — the password field only appears
+    // once it's actually needed (unavailable to begin with, or the user cancelled/failed the
+    // fingerprint check), never composed underneath the system biometric prompt at the same time.
+    var showPasswordDialog by remember { mutableStateOf(!biometricAvailable) }
+
     fun tryBiometric() {
         if (activity == null) return
         busy = true
         scope.launch {
-            when (val result = authenticateWithBiometrics(activity, "Confirm payment", message, negativeButtonText = "Use password")) {
+            when (val result = authenticateWithBiometrics(activity, title, message, negativeButtonText = "Use password")) {
                 is BiometricAuthResult.Success -> onConfirmed()
-                is BiometricAuthResult.Failed -> error = result.message
-                is BiometricAuthResult.Cancelled -> Unit // falls back to the password field below, silently
+                is BiometricAuthResult.Failed -> { error = result.message; showPasswordDialog = true }
+                is BiometricAuthResult.Cancelled -> showPasswordDialog = true
             }
             busy = false
         }
     }
 
     // Offers the fingerprint prompt right away rather than making the user reach for the button —
-    // "Use password" in the prompt's negative button, or just backing out of it, drops back to
-    // this same dialog with the password field still there.
+    // "Use password" in the prompt's negative button, or just backing out of it, reveals the
+    // password dialog below instead of it being visible the whole time.
     LaunchedEffect(biometricAvailable) {
         if (biometricAvailable) tryBiometric()
     }
 
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, modifier = androidx.compose.ui.Modifier.weight(1f))
-                if (biometricAvailable) {
-                    IconButton(onClick = ::tryBiometric, enabled = !busy) {
-                        Icon(Icons.Filled.Fingerprint, contentDescription = "Use fingerprint")
-                    }
-                }
-            }
-        },
-        text = {
-            Column {
-                Text(message, style = MaterialTheme.typography.bodyMedium)
-                Spacer(modifier = androidx.compose.ui.Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = null },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    enabled = !busy,
-                    isError = error != null,
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = null
-                            )
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) onDismiss() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, modifier = androidx.compose.ui.Modifier.weight(1f))
+                    if (biometricAvailable) {
+                        IconButton(onClick = ::tryBiometric, enabled = !busy) {
+                            Icon(Icons.Filled.Fingerprint, contentDescription = "Use fingerprint")
                         }
-                    },
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    supportingText = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } }
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                enabled = !busy,
-                onClick = {
-                    if (password.isBlank()) {
-                        error = "Enter your password"
-                        return@Button
-                    }
-                    busy = true
-                    scope.launch {
-                        val ok = AuthRepository.verifyPassword(password)
-                        busy = false
-                        if (ok) onConfirmed() else error = "Incorrect password"
                     }
                 }
-            ) {
-                if (busy) CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.height(18.dp)) else Text("Confirm")
+            },
+            text = {
+                Column {
+                    Text(message, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = androidx.compose.ui.Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it; error = null },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        enabled = !busy,
+                        isError = error != null,
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = null
+                                )
+                            }
+                        },
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        supportingText = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !busy,
+                    onClick = {
+                        if (password.isBlank()) {
+                            error = "Enter your password"
+                            return@Button
+                        }
+                        busy = true
+                        scope.launch {
+                            val ok = AuthRepository.verifyPassword(password)
+                            busy = false
+                            if (ok) onConfirmed() else error = "Incorrect password"
+                        }
+                    }
+                ) {
+                    if (busy) CircularProgressIndicator(modifier = androidx.compose.ui.Modifier.height(18.dp)) else Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
-        }
-    )
+        )
+    }
 }

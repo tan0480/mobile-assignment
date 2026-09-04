@@ -13,8 +13,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,11 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AuthRepository
-import com.example.gadgetmover.data.ChangePasswordResult
 import com.example.gadgetmover.data.supabase
 import com.example.gadgetmover.screen.components.CreatePasswordDialog
 import com.example.gadgetmover.screen.components.PasswordConfirmDialog
@@ -69,7 +64,12 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountInfoScreen(onBackClick: () -> Unit) {
+fun AccountInfoScreen(
+    onBackClick: () -> Unit,
+    onChangePasswordClick: () -> Unit,
+    successMessage: String? = null,
+    onSuccessMessageShown: () -> Unit = {}
+) {
     val currentUser = AuthRepository.currentUser.value ?: return
 
     var name by rememberSaveable(currentUser.id) { mutableStateOf(currentUser.name) }
@@ -79,7 +79,6 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
     var checkingUserId by remember { mutableStateOf(false) }
     var showConfirmSave by remember { mutableStateOf(false) }
     var isSaving by rememberSaveable { mutableStateOf(false) }
-    var showChangePassword by remember { mutableStateOf(false) }
     var showCreatePassword by remember { mutableStateOf(false) }
     var googleIdentity by remember { mutableStateOf<Identity?>(null) }
     var showUnlinkGoogleConfirm by remember { mutableStateOf(false) }
@@ -94,6 +93,16 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
 
     LaunchedEffect(currentUser.id) { refreshGoogleIdentity() }
 
+    // ChangePasswordScreen navigates back here immediately on success rather than blocking on a
+    // snackbar on its own screen — the confirmation message is handed off via the nav back stack
+    // entry instead, same idiom as WalletScreen's Add Funds/Withdraw success handoff.
+    LaunchedEffect(successMessage) {
+        successMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            onSuccessMessageShown()
+        }
+    }
+
     // Reuses the same native Credential Manager flow as "Continue with Google" on the login
     // screen, but with LINK_IDENTITY_CALLBACK instead of the default sign-in callback — this
     // attaches Google to the already-logged-in account rather than starting a new session.
@@ -102,6 +111,7 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
             when (result) {
                 is NativeSignInResult.Success -> scope.launch {
                     linkingGoogle = false
+                    AuthRepository.refreshCurrentUser()
                     refreshGoogleIdentity()
                     snackbarHostState.showSnackbar("Google account linked")
                 }
@@ -246,7 +256,7 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(onClick = { showChangePassword = true }, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onChangePasswordClick, modifier = Modifier.fillMaxWidth()) {
                     Text("Change Password")
                 }
             } else {
@@ -321,20 +331,13 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                     val success = AuthRepository.updateCurrentUser(
                         currentUser.copy(name = name, userId = userId, phone = phone)
                     )
+                    if (success) {
+                        AuthRepository.refreshCurrentUser()
+                        refreshGoogleIdentity()
+                    }
                     isSaving = false
                     snackbarHostState.showSnackbar(if (success) "Profile updated" else "Couldn't save changes. Please try again.")
                 }
-            }
-        )
-    }
-
-    if (showChangePassword) {
-        ChangePasswordDialog(
-            email = currentUser.email,
-            onDismiss = { showChangePassword = false },
-            onSuccess = {
-                showChangePassword = false
-                scope.launch { snackbarHostState.showSnackbar("Password changed") }
             }
         )
     }
@@ -344,7 +347,11 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
             onDismiss = { showCreatePassword = false },
             onCreated = {
                 showCreatePassword = false
-                scope.launch { snackbarHostState.showSnackbar("Password created") }
+                scope.launch {
+                    AuthRepository.refreshCurrentUser()
+                    refreshGoogleIdentity()
+                    snackbarHostState.showSnackbar("Password created")
+                }
             }
         )
     }
@@ -366,7 +373,8 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
                             unlinkingGoogle = false
                             showUnlinkGoogleConfirm = false
                             if (success) {
-                                googleIdentity = null
+                                AuthRepository.refreshCurrentUser()
+                                refreshGoogleIdentity()
                                 snackbarHostState.showSnackbar("Google account unlinked")
                             } else {
                                 snackbarHostState.showSnackbar(
@@ -386,102 +394,6 @@ fun AccountInfoScreen(onBackClick: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { showUnlinkGoogleConfirm = false }, enabled = !unlinkingGoogle) { Text("Cancel") }
             }
-        )
-    }
-}
-
-@Composable
-private fun ChangePasswordDialog(email: String, onDismiss: () -> Unit, onSuccess: () -> Unit) {
-    var currentPassword by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var currentPasswordVisible by remember { mutableStateOf(false) }
-    var newPasswordVisible by remember { mutableStateOf(false) }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Change Password") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = currentPassword,
-                    onValueChange = { currentPassword = it; error = null },
-                    label = { Text("Current password") },
-                    singleLine = true,
-                    enabled = !busy,
-                    trailingIcon = { PasswordVisibilityToggle(currentPasswordVisible) { currentPasswordVisible = !currentPasswordVisible } },
-                    visualTransformation = if (currentPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = newPassword,
-                    onValueChange = { newPassword = it; error = null },
-                    label = { Text("New password") },
-                    singleLine = true,
-                    enabled = !busy,
-                    trailingIcon = { PasswordVisibilityToggle(newPasswordVisible) { newPasswordVisible = !newPasswordVisible } },
-                    visualTransformation = if (newPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it; error = null },
-                    label = { Text("Confirm new password") },
-                    singleLine = true,
-                    enabled = !busy,
-                    isError = error != null,
-                    trailingIcon = { PasswordVisibilityToggle(confirmPasswordVisible) { confirmPasswordVisible = !confirmPasswordVisible } },
-                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    supportingText = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } }
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                enabled = !busy,
-                onClick = {
-                    if (newPassword.length < 6) {
-                        error = "New password must be at least 6 characters"
-                        return@Button
-                    }
-                    if (newPassword != confirmPassword) {
-                        error = "Passwords don't match"
-                        return@Button
-                    }
-                    busy = true
-                    scope.launch {
-                        val result = AuthRepository.changePassword(email, currentPassword, newPassword)
-                        busy = false
-                        when (result) {
-                            ChangePasswordResult.SUCCESS -> onSuccess()
-                            ChangePasswordResult.INCORRECT_CURRENT -> error = "Current password is incorrect"
-                            ChangePasswordResult.FAILED -> error = "Couldn't change your password. Please try again."
-                        }
-                    }
-                }
-            ) {
-                if (busy) CircularProgressIndicator(modifier = Modifier.height(18.dp), color = Color.White) else Text("Confirm")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-private fun PasswordVisibilityToggle(visible: Boolean, onToggle: () -> Unit) {
-    IconButton(onClick = onToggle) {
-        Icon(
-            imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-            contentDescription = if (visible) "Hide password" else "Show password"
         )
     }
 }

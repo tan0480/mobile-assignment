@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
 import com.example.gadgetmover.screen.components.ProductCard
 import kotlinx.coroutines.launch
 
@@ -44,11 +45,14 @@ fun SavedItemsScreen(
 ) {
     val saved = ProductRepository.getSaved()
     var isRefreshing by remember { mutableStateOf(false) }
+    var isBackgroundLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        isBackgroundLoading = true
         ProductRepository.refreshFromRemote()
         ProductRepository.refreshSavedIds()
+        isBackgroundLoading = false
     }
 
     Scaffold(
@@ -110,6 +114,7 @@ fun SavedItemsScreen(
                 }
             }
         }
+        BackgroundLoadingBadge(visible = isBackgroundLoading, modifier = Modifier.align(Alignment.TopCenter))
         }
     }
 }

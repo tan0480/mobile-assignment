@@ -29,7 +29,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.gadgetmover.data.AddressRepository
 import com.example.gadgetmover.data.AuthRepository
-import com.example.gadgetmover.data.BiometricPreferences
 import com.example.gadgetmover.data.BrowseHistoryRepository
 import com.example.gadgetmover.data.ChatRepository
 import com.example.gadgetmover.data.NotificationRepository
@@ -44,7 +43,6 @@ import com.example.gadgetmover.model.OtpPurpose
 import com.example.gadgetmover.model.ProductCategory
 import com.example.gadgetmover.model.RentalOrder
 import com.example.gadgetmover.notification.SystemNotifier
-import com.example.gadgetmover.screen.auth.BiometricUnlockScreen
 import com.example.gadgetmover.screen.auth.ForgotPasswordScreen
 import com.example.gadgetmover.screen.auth.IntroScreen
 import com.example.gadgetmover.screen.auth.LoginScreen
@@ -67,6 +65,7 @@ import com.example.gadgetmover.screen.components.LocationPickerScreen
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.screen.components.RequestStartupPermissions
 import com.example.gadgetmover.screen.profile.AccountInfoScreen
+import com.example.gadgetmover.screen.profile.ChangePasswordScreen
 import com.example.gadgetmover.screen.profile.AccountSupportAction
 import com.example.gadgetmover.screen.profile.AnalyticsScreen
 import com.example.gadgetmover.screen.profile.BrowseHistoryScreen
@@ -175,30 +174,6 @@ fun GadgetMoverNavGraph() {
         SettingsRepository.refreshFromRemote()
     }
 
-    // Gates the whole app behind a fingerprint check on a cold start that silently restored an
-    // already-signed-in session (see AuthRepository.restoreSession) — only when the seller opted
-    // into "Log in with fingerprint" in Settings. rememberSaveable (not remember) so rotating the
-    // device doesn't re-lock it, but a fresh process does. A LoginScreen submission this same
-    // process marks it unlocked immediately too (see onLoginSuccess below) — the point is to gate
-    // a *silent* restore, not to make someone who just typed their password prove it twice.
-    val isLoggedIn by AuthRepository.isLoggedIn
-    val sessionRestored by AuthRepository.sessionRestored
-    var biometricUnlocked by rememberSaveable { mutableStateOf(false) }
-    if (sessionRestored && isLoggedIn && !biometricUnlocked && BiometricPreferences.isLoginEnabled(context)) {
-        BiometricUnlockScreen(
-            userName = AuthRepository.currentUser.value?.name.orEmpty(),
-            onUnlocked = { biometricUnlocked = true },
-            onLogout = {
-                scope.launch {
-                    AuthRepository.logout()
-                    biometricUnlocked = true
-                    navController.navigate(Screen.Login.route) { popUpTo(0) }
-                }
-            }
-        )
-        return
-    }
-
     Scaffold(
         bottomBar = {
             if (currentRoute in bottomBarRoutes && !isEditingExistingListing) {
@@ -250,7 +225,6 @@ fun GadgetMoverNavGraph() {
                 LoginScreen(
                     onBackClick = { navController.popBackStack() },
                     onLoginSuccess = {
-                        biometricUnlocked = true
                         navController.navigate(Screen.Home.route) {
                             popUpTo(0)
                         }
@@ -407,7 +381,10 @@ fun GadgetMoverNavGraph() {
                 val productId = entry.arguments?.getString("productId").orEmpty()
                 val product = ProductRepository.getById(productId)
                 if (product != null) {
-                    LaunchedEffect(productId) { BrowseHistoryRepository.recordView(productId) }
+                    // Viewing your own listing shouldn't pollute your own "recently viewed" list.
+                    LaunchedEffect(productId) {
+                        if (product.sellerId != AuthRepository.currentUser.value?.id) BrowseHistoryRepository.recordView(productId)
+                    }
                     ProductDetailScreen(
                         product = product,
                         onBackClick = { navController.popBackStack() },
@@ -673,7 +650,8 @@ fun GadgetMoverNavGraph() {
                             entry.savedStateHandle.remove<String>("picked_address")
                             entry.savedStateHandle.remove<String>("picked_name")
                             navController.navigate(Screen.LocationPicker.route)
-                        }
+                        },
+                        onContactSupportClick = { navController.navigate(Screen.HelpCentre.route) }
                     )
                 }
             }
@@ -841,8 +819,26 @@ fun GadgetMoverNavGraph() {
                 )
             }
 
-            composable(Screen.AccountInfo.route) {
-                AccountInfoScreen(onBackClick = { navController.popBackStack() })
+            composable(Screen.AccountInfo.route) { entry ->
+                val successMessage by entry.savedStateHandle.getStateFlow<String?>("account_info_success_message", null).collectAsState()
+                AccountInfoScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onChangePasswordClick = { navController.navigate(Screen.ChangePassword.route) },
+                    successMessage = successMessage,
+                    onSuccessMessageShown = { entry.savedStateHandle["account_info_success_message"] = null }
+                )
+            }
+
+            composable(Screen.ChangePassword.route) {
+                ChangePasswordScreen(
+                    email = AuthRepository.currentUser.value?.email.orEmpty(),
+                    onBackClick = { navController.popBackStack() },
+                    onChanged = {
+                        navController.getBackStackEntry(Screen.AccountInfo.route)
+                            .savedStateHandle["account_info_success_message"] = "Password changed"
+                        navController.popBackStack(Screen.AccountInfo.route, inclusive = false)
+                    }
+                )
             }
 
             composable(Screen.HelpCentre.route) {
