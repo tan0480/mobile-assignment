@@ -84,6 +84,8 @@ import com.example.gadgetmover.util.formatDisplayDate
 import com.example.gadgetmover.util.formatMoney
 import kotlinx.coroutines.launch
 
+private const val MESSAGE_CHAR_LIMIT = 1000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailScreen(
@@ -323,12 +325,22 @@ fun ChatDetailScreen(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val messageOverLimit = input.length > MESSAGE_CHAR_LIMIT
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
                     placeholder = { Text("Type a message...") },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(24.dp),
+                    isError = messageOverLimit,
+                    supportingText = if (input.isEmpty()) null else {
+                        {
+                            Text(
+                                if (messageOverLimit) "Message cannot exceed $MESSAGE_CHAR_LIMIT characters"
+                                else "${input.length} / $MESSAGE_CHAR_LIMIT"
+                            )
+                        }
+                    },
                     // OutlinedTextField's container is transparent by default, which was fine
                     // sitting on the old opaque bottomBar — now that this row floats with no
                     // background of its own, an explicit solid color keeps the chat from showing
@@ -353,20 +365,21 @@ fun ChatDetailScreen(
                 IconButton(
                     onClick = {
                         val text = input.trim()
-                        if (text.isNotBlank()) {
+                        if (text.isNotBlank() && text.length <= MESSAGE_CHAR_LIMIT) {
                             input = ""
                             scope.launch {
                                 ChatRepository.sendMessage(thread, text)
                             }
                         }
                     },
+                    enabled = !messageOverLimit,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .background(BrandOrange)
+                        .background(if (messageOverLimit) MaterialTheme.colorScheme.surfaceVariant else BrandOrange)
                         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
                 ) {
-                    Icon(Icons.Filled.Send, contentDescription = "Send", tint = Color.White)
+                    Icon(Icons.Filled.Send, contentDescription = "Send", tint = if (messageOverLimit) MaterialTheme.colorScheme.onSurfaceVariant else Color.White)
                 }
             }
         }

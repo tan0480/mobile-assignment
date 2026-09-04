@@ -3,6 +3,7 @@ package com.example.gadgetmover.screen.components
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
@@ -28,7 +29,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.example.gadgetmover.data.AuthRepository
+import com.example.gadgetmover.util.PASSWORD_REQUIREMENTS_HINT
+import com.example.gadgetmover.util.validatePassword
 import kotlinx.coroutines.launch
 
 /**
@@ -50,9 +54,12 @@ fun CreatePasswordDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
+        // See ChangePasswordDialog for why: without this, switching focus between this dialog's
+        // two password fields makes the keyboard visibly hide and immediately re-show.
+        properties = DialogProperties(decorFitsSystemWindows = false),
         title = { Text("Create a password") },
         text = {
-            Column {
+            Column(modifier = Modifier.imePadding()) {
                 Text(
                     "You signed in with Google. Create a password for your Gadget Mover account before you buy, rent, or list an item.",
                     style = MaterialTheme.typography.bodyMedium
@@ -70,7 +77,8 @@ fun CreatePasswordDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
                         }
                     },
                     visualTransformation = if (newPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    supportingText = { Text(PASSWORD_REQUIREMENTS_HINT, style = MaterialTheme.typography.bodySmall) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -95,8 +103,8 @@ fun CreatePasswordDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
             Button(
                 enabled = !busy,
                 onClick = {
-                    if (newPassword.length < 6) {
-                        error = "Password must be at least 6 characters"
+                    validatePassword(newPassword)?.let {
+                        error = it
                         return@Button
                     }
                     if (newPassword != confirmPassword) {

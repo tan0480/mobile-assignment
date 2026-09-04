@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -71,7 +72,8 @@ fun SellerProfileScreen(
     sellerId: String,
     sellerNameFallback: String,
     onBackClick: () -> Unit,
-    onProductClick: (Product) -> Unit
+    onProductClick: (Product) -> Unit,
+    onReviewsClick: () -> Unit = {}
 ) {
     var seller by remember(sellerId) { mutableStateOf<User?>(null) }
     var query by remember(sellerId) { mutableStateOf("") }
@@ -112,7 +114,7 @@ fun SellerProfileScreen(
             modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                SellerHeaderCard(seller = seller, fallbackName = sellerNameFallback)
+                SellerHeaderCard(seller = seller, fallbackName = sellerNameFallback, onReviewsClick = onReviewsClick)
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -238,7 +240,7 @@ private fun SellerProfileTopBar(title: String, onBackClick: () -> Unit) {
 }
 
 @Composable
-private fun SellerHeaderCard(seller: User?, fallbackName: String) {
+private fun SellerHeaderCard(seller: User?, fallbackName: String, onReviewsClick: () -> Unit) {
     Column(
         modifier = Modifier
             .padding(horizontal = 20.dp)
@@ -306,7 +308,10 @@ private fun SellerHeaderCard(seller: User?, fallbackName: String) {
                         color = Color.White.copy(alpha = 0.75f)
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable(onClick = onReviewsClick)
+                    ) {
                         Icon(
                             Icons.Filled.Star,
                             contentDescription = null,
@@ -318,7 +323,8 @@ private fun SellerHeaderCard(seller: User?, fallbackName: String) {
                             "${seller.rating} · ${seller.ratingCount} reviews",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = AccentLime
+                            color = AccentLime,
+                            textDecoration = TextDecoration.Underline
                         )
                     }
                 }

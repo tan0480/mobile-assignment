@@ -10,5 +10,8 @@ data class Review(
     val rating: Float,
     val comment: String,
     val date: String,
-    val relatedProductTitle: String? = null
+    val relatedProductTitle: String? = null,
+    val imageUrls: List<String> = emptyList(),
+    val sellerReply: String? = null,
+    val sellerRepliedAt: String? = null
 )
