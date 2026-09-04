@@ -74,7 +74,6 @@ import com.example.gadgetmover.model.RentActivityTab
 import com.example.gadgetmover.model.RentalOrder
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
 import com.example.gadgetmover.screen.components.BackgroundLoadingBadge
-import com.example.gadgetmover.screen.components.ReviewDialog
 import com.example.gadgetmover.screen.components.ShipmentDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
@@ -139,6 +138,7 @@ fun MyActivitiesScreen(
     onBackClick: () -> Unit,
     onOrderClick: (Order) -> Unit,
     onRequestReturnClick: (Order) -> Unit = {},
+    onWriteReviewClick: (Order) -> Unit = {},
     initialTab: Int = 0
 ) {
     // rememberSaveable (not remember) so the tab/filter survive a round trip into Order Details
@@ -152,7 +152,6 @@ fun MyActivitiesScreen(
     var pendingAction by remember { mutableStateOf<Pair<Order, OrderAction.StatusChange>?>(null) }
     var pendingShipment by remember { mutableStateOf<Pair<Order, OrderAction.Ship>?>(null) }
     var pendingDelete by remember { mutableStateOf<Order?>(null) }
-    var pendingReview by remember { mutableStateOf<Order?>(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -257,7 +256,7 @@ fun MyActivitiesScreen(
                             },
                             onClick = { onOrderClick(order) },
                             onDeleteClick = { pendingDelete = order },
-                            onLeaveReview = { pendingReview = order },
+                            onLeaveReview = { onWriteReviewClick(order) },
                             onRequestReturn = { onRequestReturnClick(order) }
                         )
                     }
@@ -275,15 +274,16 @@ fun MyActivitiesScreen(
             text = {
                 Text(
                     if (action.destructive) {
+                        // Unlike a post-shipment return/refund, "Cancel Order" is only ever
+                        // offered while the order is still PAID (see actionsFor() above) — nothing
+                        // has shipped yet, so unlike a return there's no courier cost to withhold;
+                        // the full amount (shipping fee included) is refunded (release_order_payout()
+                        // in schema.sql).
                         val total = when (order) {
                             is BuyOrder -> order.price
                             is RentalOrder -> order.totalAmount
                         }
-                        val shippingFee = order.checkout.shippingFee
-                        val refundAmount = total - shippingFee
-                        "This will cancel the order and refund ${formatMoney(refundAmount)} to your wallet" +
-                            (if (shippingFee > 0) " (shipping fee is not refundable)" else "") +
-                            ". This cannot be undone."
+                        "This will cancel the order and refund ${formatMoney(total)} to your wallet. This cannot be undone."
                     } else "Mark this order as \"${action.newStatus.label}\"?"
                 )
             },
@@ -317,23 +317,6 @@ fun MyActivitiesScreen(
                     val succeeded = OrderRepository.markShipped(order, courier, tracking)
                     pendingShipment = null
                     if (!succeeded) snackbarHostState.showSnackbar("Couldn't update this order. Please try again.")
-                }
-            }
-        )
-    }
-
-    pendingReview?.let { order ->
-        ReviewDialog(
-            onDismiss = { pendingReview = null },
-            onSubmit = { rating, comment ->
-                scope.launch {
-                    val succeeded = ReviewRepository.submitReview(order.id, rating, comment)
-                    pendingReview = null
-                    if (succeeded) {
-                        OrderRepository.refreshFromRemote()
-                    } else {
-                        snackbarHostState.showSnackbar("Couldn't submit your review. Please try again.")
-                    }
                 }
             }
         )
@@ -403,7 +386,7 @@ private fun OrderCard(
     val canReview = isBuyerSide && order.status == OrderStatus.TO_REVIEW
     val canRequestReturn = order is BuyOrder && isBuyerSide && order.status == OrderStatus.SHIPPED
     val canReviewReturnRequest = order is BuyOrder && !isBuyerSide && order.status == OrderStatus.RETURN_REQUESTED
-    val canDelete = order.status == OrderStatus.COMPLETED || order.status == OrderStatus.CANCELLED
+    val canDelete = order.status.isDeletable
     // Not reflected in [OrderStatus] itself, so this needs its own lookup — starts true (hides
     // the button) so a not-yet-reviewed order doesn't flash a button that then disappears.
     var alreadyReviewed by remember(order.id) { mutableStateOf(true) }

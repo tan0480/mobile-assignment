@@ -59,7 +59,6 @@ import com.example.gadgetmover.model.FulfillmentMethod
 import com.example.gadgetmover.model.Order
 import com.example.gadgetmover.model.OrderStatus
 import com.example.gadgetmover.model.RentalOrder
-import com.example.gadgetmover.screen.components.ReviewDialog
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
 import com.example.gadgetmover.ui.theme.WarningAmber
@@ -83,14 +82,14 @@ fun OrderDetailScreen(
     onBackClick: () -> Unit,
     onDeleted: () -> Unit,
     onRequestReturnClick: () -> Unit = {},
-    onReviewRequestClick: () -> Unit = {}
+    onReviewRequestClick: () -> Unit = {},
+    onWriteReviewClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showReviewDialog by remember { mutableStateOf(false) }
     var alreadyReviewed by remember { mutableStateOf(true) }
     // Tapping the tracking number only stages this — the actual copy+open happens once the user
     // confirms in the AlertDialog below, since jumping straight to another app with no warning
@@ -125,7 +124,7 @@ fun OrderDetailScreen(
     val canReview = order.status == OrderStatus.TO_REVIEW && isBuyerSide
     val canRequestReturn = order is BuyOrder && isBuyerSide && order.status == OrderStatus.SHIPPED
     val canReviewReturnRequest = order is BuyOrder && isSellerSide && order.status == OrderStatus.RETURN_REQUESTED
-    val canDelete = order.status == OrderStatus.COMPLETED || order.status == OrderStatus.CANCELLED
+    val canDelete = order.status.isDeletable
     val payoutPending = when (order) {
         is BuyOrder -> order.status == OrderStatus.SHIPPED
         is RentalOrder -> order.status in setOf(OrderStatus.RENTAL_SHIPPED, OrderStatus.RENTING, OrderStatus.RETURN_PENDING)
@@ -239,7 +238,7 @@ fun OrderDetailScreen(
             if (canReview && !alreadyReviewed) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
-                    onClick = { showReviewDialog = true },
+                    onClick = onWriteReviewClick,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandOrange)
                 ) {
@@ -261,21 +260,6 @@ fun OrderDetailScreen(
                 }
             }
         }
-    }
-
-    if (showReviewDialog) {
-        ReviewDialog(
-            onDismiss = { showReviewDialog = false },
-            onSubmit = { rating, comment ->
-                scope.launch {
-                    if (ReviewRepository.submitReview(order.id, rating, comment)) {
-                        alreadyReviewed = true
-                        OrderRepository.refreshFromRemote()
-                    }
-                    showReviewDialog = false
-                }
-            }
-        )
     }
 
     if (showDeleteDialog) {
