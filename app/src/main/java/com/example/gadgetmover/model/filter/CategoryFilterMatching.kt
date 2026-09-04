@@ -60,6 +60,42 @@ private fun fieldMatches(field: FilterField, buyerValue: FilterFieldValue, produ
             buyerNum == null || (productNum != null && productNum >= buyerNum)
         }
 
+        is FilterFieldValue.UnitRangeInput -> {
+            val units = (field.type as? FilterType.NumberRangeWithUnitToggle)?.units.orEmpty()
+            fun toBase(unit: String, amount: Float): Float? =
+                units.find { it.unit == unit }?.let { amount * it.toBaseMultiplier }
+
+            val buyerStart = toBase(buyerValue.unit, buyerValue.range.start)
+            val buyerEnd = toBase(buyerValue.unit, buyerValue.range.endInclusive)
+            val productRangeBase = when (productValue) {
+                is FilterFieldValue.UnitRangeInput -> {
+                    val s = toBase(productValue.unit, productValue.range.start)
+                    val e = toBase(productValue.unit, productValue.range.endInclusive)
+                    if (s != null && e != null) s..e else null
+                }
+                // Listing mode stores a single UnitNumberInput for NumberRangeWithUnitToggle fields.
+                is FilterFieldValue.UnitNumberInput -> productValue.value.toFloatOrNull()
+                    ?.let { toBase(productValue.unit, it) }
+                    ?.let { it..it }
+                else -> null
+            }
+            // The seller never specified this spec — don't exclude the product over it.
+            productRangeBase == null || buyerStart == null || buyerEnd == null ||
+                (productRangeBase.start <= buyerEnd && productRangeBase.endInclusive >= buyerStart)
+        }
+
+        is FilterFieldValue.UnitNumberInput -> {
+            // No listing UI treats a UnitNumberInput as a range, so a buyer's value is read as a floor (same unit-normalization as UnitRangeInput above).
+            val units = (field.type as? FilterType.NumberRangeWithUnitToggle)?.units.orEmpty()
+            fun toBase(unit: String, amount: Float): Float? =
+                units.find { it.unit == unit }?.let { amount * it.toBaseMultiplier }
+
+            val buyerNum = buyerValue.value.toFloatOrNull()?.let { toBase(buyerValue.unit, it) }
+            val productNum = (productValue as? FilterFieldValue.UnitNumberInput)?.value?.toFloatOrNull()
+                ?.let { toBase(productValue.unit, it) }
+            buyerNum == null || (productNum != null && productNum >= buyerNum)
+        }
+
         is FilterFieldValue.CameraRequirements -> {
             val productModules = (productValue as? FilterFieldValue.CameraRequirements)?.items.orEmpty().map { it.toActualCameraModule() }
             buyerValue.items.satisfiesAllCameraRequirements(productModules)
@@ -68,6 +104,23 @@ private fun fieldMatches(field: FilterField, buyerValue: FilterFieldValue, produ
         is FilterFieldValue.PcieSlotRequirements -> {
             val productSlots = (productValue as? FilterFieldValue.PcieSlotRequirements)?.items.orEmpty().map { it.toActualPcieSlot() }
             buyerValue.items.satisfiesAllPcieSlotRequirements(productSlots)
+        }
+
+        is FilterFieldValue.SwitchRequirements -> {
+            val productItems = (productValue as? FilterFieldValue.SwitchRequirements)?.items.orEmpty()
+            buyerValue.items.all { req ->
+                productItems.any { item ->
+                    (req.brandId == null || req.brandId == item.brandId) &&
+                        (req.modelId == null || req.modelId == item.modelId)
+                }
+            }
+        }
+
+        is FilterFieldValue.VideoPortRequirements -> {
+            val productItems = (productValue as? FilterFieldValue.VideoPortRequirements)?.items.orEmpty()
+            buyerValue.items.all { req ->
+                productItems.any { item -> req.portTypeId == null || req.portTypeId == item.portTypeId }
+            }
         }
     }
 }

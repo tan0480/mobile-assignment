@@ -12,10 +12,11 @@ object PsuFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Corsair", "Seasonic", "EVGA", "be quiet!", "Cooler Master", "Thermaltake",
-            "MSI", "ASUS ROG", "FSP", "Super Flower", "Antec", "Silverstone", "Other"
+            "Corsair", "Seasonic", "EVGA", "be quiet!", "Thermaltake", "Cooler Master", "ASUS (ROG / TUF)",
+            "MSI", "DeepCool", "FSP Group", "Super Flower", "NZXT", "SilverStone", "Gigabyte", "Montech",
+            "Lian Li", "Antec", "XPG (ADATA)", "Fractal Design", "Unknown"
         )
     )
 
@@ -28,7 +29,7 @@ object PsuFilterSchema {
     val efficiencyRating = FilterField(
         key = "efficiency_rating",
         label = "80 PLUS Efficiency Rating",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "80 PLUS Titanium", "80 PLUS Platinum", "80 PLUS Gold",
             "80 PLUS Silver", "80 PLUS Bronze", "80 PLUS White", "Other"
@@ -38,21 +39,21 @@ object PsuFilterSchema {
     val modularity = FilterField(
         key = "modularity",
         label = "Modularity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Fully Modular", "Semi-Modular", "Non-Modular", "Other")
     )
 
     val formFactor = FilterField(
         key = "form_factor",
         label = "Form Factor",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("ATX", "SFX", "SFX-L", "TFX", "Other")
     )
 
     val atxStandard = FilterField(
         key = "atx_standard",
         label = "ATX Standard",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("ATX 3.1", "ATX 3.0", "ATX 2.x", "Other")
     )
 
@@ -68,7 +69,7 @@ object PsuFilterSchema {
         type = FilterType.CheckboxList,
         options = options(
             "All Japanese Capacitors", "12VHPWR / 12V-2x6 Connector", "Zero RPM Fan Mode (Fanless at Idle)",
-            "LCD / Digital Display", "10-Year Warranty", "Other"
+            "LCD / Digital Display", "10-Year Warranty"
         )
     )
 

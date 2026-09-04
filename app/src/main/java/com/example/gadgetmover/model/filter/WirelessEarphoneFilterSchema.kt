@@ -16,18 +16,22 @@ object WirelessEarphoneFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Apple", "Samsung", "Sony", "Bose", "JBL", "Anker Soundcore", "Jabra", "Beats", "Google",
-            "Huawei", "Xiaomi", "OPPO", "Nothing", "Skullcandy", "1MORE", "Edifier", "QCY", "Haylou",
-            "Amazfit", "Razer", "SteelSeries", "Other"
+            "1MORE", "Amazfit", "Anker Soundcore", "Apple", "Audio-Technica", "Bang & Olufsen", "Beats",
+            "Belkin", "Bose", "Bowers & Wilkins", "CMF", "Creative", "Denon", "Devialet", "EarFun", "Edifier",
+            "Final", "FiiO", "Google", "Harman Kardon", "Haylou", "HIFIMAN", "Honor", "Huawei", "Jabra",
+            "JBL", "JLab", "JVC", "Lypertek", "Marshall", "Master & Dynamic", "Meizu", "Microsoft",
+            "Moondrop", "Motorola", "Noble Audio", "Nokia", "Nothing", "OnePlus", "Oppo", "Panasonic",
+            "Philips", "QCY", "Razer", "Realme", "Redmi", "Samsung", "Sennheiser", "Shokz", "Skullcandy",
+            "Sony", "SoundPEATS", "Technics", "TOZO", "Tribit", "Ultimate Ears", "Vivo", "Xiaomi", "Unknown"
         )
     )
 
     val formFactor = FilterField(
         key = "form_factor",
         label = "Form Factor",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "TWS In-Ear (With Silicone/Foam Tips)", "TWS Semi-In-Ear (Half In-Ear / Stem Style)",
             "Open-Ear (OWS Earhook)", "Open-Ear (OWS Ear-Clip)", "Bone Conduction (Neckband)",
@@ -38,7 +42,7 @@ object WirelessEarphoneFilterSchema {
     val acousticDriverType = FilterField(
         key = "acoustic_driver_type",
         label = "Acoustic Driver Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Single Dynamic Driver", "Dual Dynamic Driver (Coaxial)", "Dynamic + Balanced Armature Hybrid",
             "Planar Magnetic", "Bone Conduction Transducer", "Piezoelectric Ceramic", "Other"
@@ -90,12 +94,8 @@ object WirelessEarphoneFilterSchema {
         options = options("USB-C", "Wireless Charging", "Magnetic Charging", "Other")
     )
 
-    val ipRating = FilterField(
-        key = "ip_rating",
-        label = "Ingress Protection (IP Rating)",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("IPX4", "IPX5", "IPX7", "IP54", "IP55", "IP68", "Other")
-    )
+    /** Shared with every other category that carries this field — see [IpRatingFields]. */
+    val ipRating = IpRatingFields.ipRating
 
     val singleEarbudWeight = FilterField(
         key = "single_earbud_weight",
@@ -126,8 +126,7 @@ object WirelessEarphoneFilterSchema {
             "Force / Pinch Sensor Controls",
             "App EQ Customization",
             "Low Latency Gaming Mode",
-            "Integrated Find My / Device Tracking",
-            "Other"
+            "Integrated Find My / Device Tracking"
         )
     )
 

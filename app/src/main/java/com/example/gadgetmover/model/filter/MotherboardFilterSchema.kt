@@ -12,32 +12,63 @@ object MotherboardFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
-        options = options("ASUS", "MSI", "Gigabyte", "ASRock", "EVGA", "Biostar", "Colorful", "Other")
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
+        options = options(
+            "Acer", "AFOX", "Albatron", "Alienware", "ASRock", "ASUS", "Biostar", "Colorful", "Dell",
+            "DFI", "ECS", "EVGA", "Foxconn", "Fujitsu", "Gigabyte", "HP", "Intel", "Jetway", "Kontron",
+            "Lenovo", "Machinist", "Maxsun", "MiTAC", "MSI", "NZXT", "Onda", "Pegatron", "Sapphire",
+            "Shuttle", "SOYO", "Supermicro", "Tyan", "Zotac", "Unknown"
+        )
     )
 
     val socket = FilterField(
         key = "socket",
         label = "Socket",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
-        options = options(*PcSocketOptions.labels)
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
+        options = PcSocketOptions.options.filter { it.id != "other" }
     )
 
+    /**
+     * Narrows [chipset] to just the picked [socket]'s chips. Workstation-tier pairings (the
+     * Xeon-facing C2xx/C6xx/C741/W-series chipsets) are grouped with whichever consumer socket
+     * generation they physically share, per Intel's published platform pairings — except W790,
+     * which uniquely takes LGA 4677 rather than its contemporaries' LGA 1700. C261/C262/C266 and
+     * W880 have thinner public documentation than the rest of this table; they're placed by
+     * generation contemporaries (LGA 1700 and LGA 1851 respectively) as a best-effort default —
+     * flag it if either turns out to be wrong.
+     */
     private val chipsetsBySocket: Map<String, List<FilterOption>> = mapOf(
-        "lga1851" to options("Intel Z890", "Intel B860", "Intel H810"),
-        "lga1700" to options("Intel Z790", "Intel B760", "Intel H770"),
-        "am5" to options("AMD X870E", "AMD X870", "AMD B850", "AMD B650", "AMD X670E", "AMD X670", "AMD B650E"),
-        "other" to options("Other")
+        "lga_1155" to options("H61", "B65", "Q65", "H67", "P67", "Q67", "Z68", "B75", "H77", "Q75", "Q77", "Z75", "Z77", "C202", "C204", "C206", "C216"),
+        "lga_1150" to options("H81", "B85", "Q85", "Q87", "H87", "Z87", "H97", "Z97", "C222", "C224", "C226"),
+        "lga_1151" to options(
+            "H110", "B150", "Q150", "H170", "Q170", "Z170", "B250", "Q250", "H270", "Q270", "Z270",
+            "H310", "B360", "B365", "H370", "Q370", "Z370", "Z390", "C232", "C236", "C242", "C246"
+        ),
+        "lga_1200" to options("H410", "B460", "H470", "Q470", "W480", "Z490", "H510", "B560", "H570", "Q570", "W580", "Z590"),
+        "lga_1700" to options("H610", "B660", "H670", "Q670", "W680", "Z690", "B760", "H770", "Q770", "Z790", "C252", "C256", "C261", "C262", "C266"),
+        "lga_1851" to options("H810", "B860", "Q870", "W880", "Z890"),
+        "lga_3647" to options("C621", "C621A", "C627"),
+        "lga_4677" to options("C741", "W790"),
+        "am3_plus" to options("970", "990X", "990FX"),
+        "fm1" to options("A55", "A75"),
+        "fm2_plus" to options("A58", "A68H", "A78", "A88X"),
+        "am4" to options("A300", "A320", "B350", "X370", "B450", "X470", "A520", "B550", "X570"),
+        "am5" to options("A620", "B650", "B650E", "X670", "X670E", "B840", "B850", "X870", "X870E"),
+        "tr4" to options("X399"),
+        "strx4" to options("TRX40"),
+        "swrx8" to options("WRX0"),
+        "str5" to options("TRX50"),
+        "other" to emptyList()
     )
 
-    /** Narrows to just the picked [socket]'s chips — same dependent-options mechanism as [PhoneFilterSchema.socModel]. Sockets with no chipset entry above (e.g. older LGA1200/LGA1151/AM4) fall back to the full catalogue. */
+    /** Narrows to just the picked [socket]'s chips — same dependent-options mechanism as [PhoneFilterSchema.socModel]. */
     val chipset = FilterField(
         key = "chipset",
         label = "Chipset",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = chipsetsBySocket.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedSocketIds = (state.valueFor("socket") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedSocketIds = selectedIdsFor(state, "socket")
             val matched = selectedSocketIds.flatMap { chipsetsBySocket[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { chipsetsBySocket.values.flatten().distinctBy { it.id } }
         }
@@ -53,21 +84,21 @@ object MotherboardFilterSchema {
     val formFactor = FilterField(
         key = "form_factor",
         label = "Form Factor",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("E-ATX", "ATX", "Micro-ATX", "Mini-ITX", "Other")
     )
 
     val memoryType = FilterField(
         key = "memory_type",
         label = "Memory Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("DDR5", "DDR4", "DDR3", "Other")
     )
 
     val memorySlots = FilterField(
         key = "memory_slots",
         label = "Memory Slots",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("2 Slots", "4 Slots", "8 Slots", "Other")
     )
 
@@ -183,7 +214,7 @@ object MotherboardFilterSchema {
         type = FilterType.CheckboxList,
         options = options(
             "Wi-Fi Built-in", "Bluetooth Built-in", "Dual LAN (Dual Ethernet Ports)", "RGB / ARGB Headers",
-            "BIOS Flashback", "Reinforced PCIe Slot (Steel Armor)", "Other"
+            "BIOS Flashback", "Reinforced PCIe Slot (Steel Armor)"
         )
     )
 

@@ -19,7 +19,7 @@ object TabletFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
         options = options(
             "Apple", "Samsung", "Huawei", "Xiaomi", "Lenovo", "Microsoft Surface", "Amazon Fire",
-            "Google Pixel Tablet", "OPPO", "Honor", "vivo", "ASUS", "Other"
+            "Google Pixel Tablet", "OPPO", "Honor", "vivo", "ASUS", "Unknown"
         )
     )
 
@@ -63,14 +63,14 @@ object TabletFilterSchema {
     val aspectRatio = FilterField(
         key = "aspect_ratio",
         label = "Aspect Ratio",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("16:10", "3:2", "4:3", "7:5", "Other")
     )
 
     val panelType = FilterField(
         key = "panel_type",
         label = "Panel Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Tandem OLED", "OLED", "AMOLED", "Mini-LED LCD",
             "IPS LCD", "E-Ink Monochrome", "E-Ink Color", "Other"
@@ -80,7 +80,7 @@ object TabletFilterSchema {
     val resolution = FilterField(
         key = "resolution",
         label = "Resolution",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "1080p / 1200p (FHD / WUXGA)", "2K / 2.5K (2560 × 1600 / 2880 × 1800)",
             "2.8K / 3K (2880 × 1920 / 3000 × 2000)", "3.2K / 4K (3200 × 2133 / 3840 × 2400)", "Other"
@@ -90,7 +90,7 @@ object TabletFilterSchema {
     val refreshRate = FilterField(
         key = "refresh_rate",
         label = "Refresh Rate",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("60Hz", "90Hz", "120Hz", "144Hz", "Other")
     )
 
@@ -106,27 +106,20 @@ object TabletFilterSchema {
         type = FilterType.NumberRange(min = 120f, max = 4320f, step = 120f, unit = " Hz", unitIsPrefix = false)
     )
 
-    val matteAntiGlare = FilterField(
-        key = "matte_anti_glare",
-        label = "Matte Anti-Glare / Paper-like Texture Glass",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
-    )
-
     // --- Processor (SoC) & Platform ---
 
     val operatingSystem = FilterField(
         key = "operating_system",
         label = "Operating System",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("iPadOS", "Android (Tablet Optimized UI)", "HarmonyOS (HarmonyOS NEXT)", "Other")
     )
 
     private val osVersionsByOs: Map<String, List<FilterOption>> = mapOf(
-        "ipados" to options("iPadOS 26", "iPadOS 18", "iPadOS 17", "Other"),
-        "android_tablet_optimized_ui" to options("Android 16", "Android 15", "Android 14", "Android 13", "Other"),
-        "harmonyos_harmonyos_next" to options("HarmonyOS NEXT 5.1", "HarmonyOS NEXT 5.0", "HarmonyOS 4", "HarmonyOS 3", "Other"),
-        "other" to options("Other")
+        "ipados" to options("iPadOS 26", "iPadOS 18", "iPadOS 17"),
+        "android_tablet_optimized_ui" to options("Android 16", "Android 15", "Android 14", "Android 13"),
+        "harmonyos_harmonyos_next" to options("HarmonyOS NEXT 5.1", "HarmonyOS NEXT 5.0", "HarmonyOS 4", "HarmonyOS 3"),
+        "other" to emptyList()
     )
 
     /** Styled and dynamically filtered the same way [socModel] narrows to [socBrand] — see [PhoneFilterSchema.osVersion]. */
@@ -136,7 +129,7 @@ object TabletFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = osVersionsByOs.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedOsIds = (state.valueFor("operating_system") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedOsIds = selectedIdsFor(state, "operating_system")
             val matched = selectedOsIds.flatMap { osVersionsByOs[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { osVersionsByOs.values.flatten().distinctBy { it.id } }
         }
@@ -145,16 +138,17 @@ object TabletFilterSchema {
     val socBrand = FilterField(
         key = "soc_brand",
         label = "SoC Brand",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Apple M-Series / A-Series", "Qualcomm Snapdragon", "MediaTek Dimensity", "Huawei Kirin", "Other")
     )
 
+    /** Shared with [PhoneFilterSchema.socModel] — see [SocModelCatalog]. iPads ship both Apple series, so unlike Phone's brand-scoped Apple bucket, this one covers [SocModelCatalog.appleASeries] + [SocModelCatalog.appleMSeries] together. */
     private val socModelsByBrand: Map<String, List<FilterOption>> = mapOf(
-        "apple_m_series_a_series" to options("Apple M4 / M3 / M2 / M1", "Apple A17 Pro / A16 / A15"),
-        "qualcomm_snapdragon" to options("Snapdragon 8 Elite / 8 Gen 3 / 8 Gen 2 / 8s Gen 3"),
-        "mediatek_dimensity" to options("Dimensity 9400 / 9300+ / 9300 / 9000"),
-        "huawei_kirin" to options("Kirin 9000W / Kirin 9000S"),
-        "other" to options("Other")
+        "apple_m_series_a_series" to SocModelCatalog.appleASeries + SocModelCatalog.appleMSeries,
+        "qualcomm_snapdragon" to SocModelCatalog.qualcommSnapdragon,
+        "mediatek_dimensity" to SocModelCatalog.mediatekDimensity,
+        "huawei_kirin" to SocModelCatalog.huaweiKirin,
+        "other" to emptyList()
     )
 
     /** Narrows to just the picked [socBrand]'s chips, the same dependent-options mechanism [PhoneFilterSchema.socModel] introduced. */
@@ -164,7 +158,7 @@ object TabletFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = socModelsByBrand.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedBrandIds = (state.valueFor("soc_brand") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedBrandIds = selectedIdsFor(state, "soc_brand")
             val matched = selectedBrandIds.flatMap { socModelsByBrand[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { socModelsByBrand.values.flatten().distinctBy { it.id } }
         }
@@ -175,21 +169,15 @@ object TabletFilterSchema {
     val ramCapacity = FilterField(
         key = "ram_capacity",
         label = "RAM Capacity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("4GB", "6GB", "8GB", "12GB", "16GB", "24GB+", "Other")
     )
 
     val internalStorage = FilterField(
         key = "internal_storage",
         label = "Internal Storage",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("32GB", "64GB", "128GB", "256GB", "512GB", "1TB", "2TB", "Other")
-    )
-
-    val storageExpansion = FilterField(
-        key = "storage_expansion",
-        label = "Expandable Storage Supported (MicroSD / NM Card slot)",
-        type = FilterType.SwitchToggle(label = "Expandable Storage Supported (MicroSD / NM Card slot)")
     )
 
     // --- Stylus & Official Keyboard Ecosystem ---
@@ -201,7 +189,7 @@ object TabletFilterSchema {
     val stylusChargingMethod = FilterField(
         key = "stylus_charging_method",
         label = "Stylus Charging Method",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Magnetic Wireless Charging on Tablet Edge", "USB-C Direct Cable Charging",
             "Battery-Free EMR (Wacom Protocol)", "Other"
@@ -212,7 +200,7 @@ object TabletFilterSchema {
     val stylusPressureSensitivity = FilterField(
         key = "stylus_pressure_sensitivity",
         label = "Stylus Pressure Sensitivity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("4096 Levels", "8192 Levels", "16384+ Levels"),
         visibleWhen = stylusDependency
     )
@@ -239,33 +227,6 @@ object TabletFilterSchema {
         key = "wired_fast_charging_max_wattage",
         label = "Wired Fast Charging",
         type = FilterType.NumberRange(min = 18f, max = 120f, step = 5f, unit = "W", unitIsPrefix = false)
-    )
-
-    val bypassChargingSupport = FilterField(
-        key = "bypass_charging_support",
-        label = "Bypass Charging Support",
-        type = FilterType.SwitchToggle(label = "Bypass Charging Support")
-    )
-
-    val reverseWiredCharging = FilterField(
-        key = "reverse_wired_charging",
-        label = "Reverse Wired Charging (Power Bank Mode)",
-        type = FilterType.SwitchToggle(label = "Reverse Wired Charging (Power Bank Mode)")
-    )
-
-    /** Tablet-local, shortened from the shared "Charger Included in Box" — mirrors [PhoneFilterSchema.chargerIncluded]/[PhoneFilterSchema.boxIncluded]. */
-    val chargerIncluded = FilterField(
-        key = "charger_included",
-        label = "Charger Included",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
-    )
-
-    val boxIncluded = FilterField(
-        key = "box_included",
-        label = "Box Included",
-        type = FilterType.RadioGroup,
-        options = options("Yes", "No")
     )
 
     // --- Speakers ---
@@ -375,14 +336,14 @@ object TabletFilterSchema {
     val network = FilterField(
         key = "network",
         label = "Network",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Wi-Fi Only", "5G Cellular", "5G-A Cellular", "4G LTE", "Other")
     )
 
     val wifiStandard = FilterField(
         key = "wifi_standard",
         label = "Wi-Fi Standard",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Wi-Fi 7", "Wi-Fi 6E", "Wi-Fi 6", "Wi-Fi 5", "Other")
     )
 
@@ -405,37 +366,38 @@ object TabletFilterSchema {
         options = options("Face ID", "Side Fingerprint", "Under-Display Fingerprint", "Other")
     )
 
-    val desktopMultiWindowMode = FilterField(
-        key = "desktop_multi_window_mode",
-        label = "Desktop / PC Multi-Window Mode (Samsung DeX, Stage Manager, PC Mode)",
-        type = FilterType.SwitchToggle(label = "Desktop / PC Multi-Window Mode (Samsung DeX, Stage Manager, PC Mode)")
-    )
+    /** Shared with every other category that carries this field — see [IpRatingFields]. */
+    val ipRating = IpRatingFields.ipRating
 
-    val hardwareAntiPeeping = FilterField(
-        key = "hardware_anti_peeping",
-        label = "Hardware Anti-Peeping Privacy Display",
-        type = FilterType.SwitchToggle(label = "Hardware Anti-Peeping Privacy Display")
-    )
-
-    val ipRating = FilterField(
-        key = "ip_rating",
-        label = "Ingress Protection",
-        type = FilterType.ChipGroup(isMultiSelect = true),
-        options = options("IP68", "IP54", "Other")
+    /** Desktop/PC Multi-Window Mode, Bypass Charging, Reverse Wired Charging, Expandable Storage, Hardware Anti-Peeping Privacy Display, Matte Anti-Glare, Charger Included, Box Included, and 3.5mm Headphone Jack used to each be their own standalone RadioGroup/SwitchToggle ("radio button") field — folded into one multi-select Features list instead, matching how every other category bundles its miscellaneous boolean specs. */
+    val features = FilterField(
+        key = "features",
+        label = "Features",
+        type = FilterType.CheckboxList,
+        options = options(
+            "Desktop / PC Multi-Window Mode (Samsung DeX, Stage Manager, PC Mode)",
+            "Bypass Charging Support",
+            "Reverse Wired Charging (Power Bank Mode)",
+            "Expandable Storage Supported (MicroSD / NM Card slot)",
+            "Hardware Anti-Peeping Privacy Display",
+            "Matte Anti-Glare / Paper-like Texture Glass",
+            "Charger Included",
+            "Box Included",
+            "3.5mm Headphone Jack"
+        )
     )
 
     val schema = CategoryFilterSchema(
         sections = listOf(
             brand,
             frameMaterial, backCoverMaterial, weight, thickness,
-            screenSize, aspectRatio, panelType, resolution, refreshRate, peakBrightness, pwmDimmingFrequency, matteAntiGlare,
+            screenSize, aspectRatio, panelType, resolution, refreshRate, peakBrightness, pwmDimmingFrequency,
             operatingSystem, osVersion, socBrand, socModel,
-            ramCapacity, internalStorage, storageExpansion
+            ramCapacity, internalStorage
         ) + CameraSystemFields.fields + listOf(
             stylusSupported, stylusChargingMethod, stylusPressureSensitivity, officialKeyboardEcosystem,
             batteryCapacity, wiredFastCharging
         ) + MobileDeviceSharedFields.fastChargingProtocolFields + listOf(
-            bypassChargingSupport, reverseWiredCharging, chargerIncluded, boxIncluded,
             speakerSystemConfiguration,
             speakerModelLeft, speakerModelRight,
             speakerModel1, speakerModel2, speakerModel3, speakerModel4,
@@ -443,8 +405,9 @@ object TabletFilterSchema {
             motorType, motorModelXAxis, motorModelZAxis,
             network, wifiStandard
         ) + MobileDeviceSharedFields.bluetoothFields + listOf(
-            usbCSpecification, MobileDeviceSharedFields.headphoneJack,
-            biometrics, desktopMultiWindowMode, hardwareAntiPeeping, ipRating
+            usbCSpecification,
+            biometrics, ipRating,
+            features
         )
     )
 }

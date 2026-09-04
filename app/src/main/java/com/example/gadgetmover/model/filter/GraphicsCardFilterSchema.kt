@@ -12,17 +12,19 @@ object GraphicsCardFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "ASUS", "MSI", "Gigabyte", "Zotac", "Sapphire", "PowerColor", "XFX", "Palit", "Colorful",
-            "Galax", "PNY", "Inno3D", "ASRock", "NVIDIA Founders Edition", "AMD Reference", "Intel", "Other"
+            "Acer", "AMD", "AFOX", "ASRock", "ASUS", "Biostar", "Colorful", "Dell", "Diamond Multimedia",
+            "Elsa", "EVGA", "Foxconn", "Gainward", "GALAX", "Gigabyte", "HIS", "HP", "Inno3D", "Intel",
+            "KFA2", "Leadtek", "Lenovo", "Manli", "Matrox", "Maxsun", "MSI", "NVIDIA", "Palit", "PNY",
+            "PowerColor", "Sapphire", "Sparkle", "VisionTek", "XFX", "Yeston", "Zotac", "Unknown"
         )
     )
 
     val chipsetBrand = FilterField(
         key = "chipset_brand",
         label = "Chipset Brand",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("NVIDIA GeForce", "AMD Radeon", "Intel Arc", "Other")
     )
 
@@ -45,7 +47,7 @@ object GraphicsCardFilterSchema {
             "AMD Radeon RX 6700 XT", "AMD Radeon RX 6600 XT", "AMD Radeon RX 6600"
         ),
         "intel_arc" to options("Intel Arc B580", "Intel Arc B570", "Intel Arc A770", "Intel Arc A750", "Intel Arc A380"),
-        "other" to options("Other")
+        "other" to emptyList()
     )
 
     /** Narrows to just the picked [chipsetBrand]'s chips — same dependent-options mechanism as [PhoneFilterSchema.socModel]. */
@@ -55,7 +57,7 @@ object GraphicsCardFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = gpuModelsByChipsetBrand.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedBrandIds = (state.valueFor("chipset_brand") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedBrandIds = selectedIdsFor(state, "chipset_brand")
             val matched = selectedBrandIds.flatMap { gpuModelsByChipsetBrand[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { gpuModelsByChipsetBrand.values.flatten().distinctBy { it.id } }
         }
@@ -64,14 +66,14 @@ object GraphicsCardFilterSchema {
     val vramCapacity = FilterField(
         key = "vram_capacity",
         label = "VRAM Capacity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("4GB", "6GB", "8GB", "10GB", "12GB", "16GB", "20GB", "24GB", "32GB", "Other")
     )
 
     val vramType = FilterField(
         key = "vram_type",
         label = "VRAM Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("GDDR7", "GDDR6X", "GDDR6", "GDDR5", "HBM2", "Other")
     )
 
@@ -106,7 +108,7 @@ object GraphicsCardFilterSchema {
     val coolingDesign = FilterField(
         key = "cooling_design",
         label = "Cooling Design",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Blower", "Single Fan", "Dual Fan", "Triple Fan", "Quad Fan",
             "Water-Cooled (AIO)", "Hybrid (Air + Water)", "Other"
@@ -122,7 +124,7 @@ object GraphicsCardFilterSchema {
     val slotWidth = FilterField(
         key = "slot_width",
         label = "Slot Width",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("2-Slot", "2.5-Slot", "3-Slot", "3.5-Slot", "4-Slot", "Other")
     )
 
@@ -152,7 +154,7 @@ object GraphicsCardFilterSchema {
         type = FilterType.CheckboxList,
         options = options(
             "Ray Tracing Support", "DLSS 4 / DLSS 3", "AMD FSR 4 / FSR 3", "Intel XeSS",
-            "RGB Lighting", "ARGB Header", "Backplate Included", "Factory Overclocked", "Other"
+            "RGB Lighting", "ARGB Header", "Backplate Included", "Factory Overclocked"
         )
     )
 

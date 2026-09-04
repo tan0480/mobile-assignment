@@ -20,17 +20,21 @@ object LaptopFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Apple", "Dell", "HP", "Lenovo", "ASUS", "Acer", "MSI", "Razer", "Microsoft Surface",
-            "Samsung", "LG", "Huawei", "Xiaomi", "Framework", "Gigabyte AORUS", "Alienware", "System76", "Other"
+            "Acer", "Aftershock", "Alienware", "Apple", "ASUS", "AVITA", "Chuwi", "Clevo", "Colorful",
+            "Corsair", "CyberPowerPC", "Dell", "Dynabook", "Eluktronics", "Eurocom", "Framework", "Fujitsu",
+            "Gateway", "Gigabyte", "Google", "Honor", "HP", "Huawei", "Infinix", "LG", "Lenovo", "Maingear",
+            "Medion", "Microsoft", "MSI", "Monster Notebook", "NEC", "Nexstgo", "Nokia", "Origin PC",
+            "Panasonic", "Razer", "Realme", "Samsung", "Schenker", "System76", "Toshiba", "Vaio", "Venom",
+            "Xiaomi", "XMG", "Unknown"
         )
     )
 
     val laptopCategory = FilterField(
         key = "laptop_category",
         label = "Laptop Category",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Thin & Light (Ultrabook)", "Creator / Performance All-Rounder", "Gaming Laptop",
             "Mobile Workstation", "2-in-1 Convertible (360° Flip / Touch)",
@@ -56,21 +60,21 @@ object LaptopFilterSchema {
     val aspectRatio = FilterField(
         key = "aspect_ratio",
         label = "Aspect Ratio",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("16:10", "16:9", "3:2", "Other")
     )
 
     val panelType = FilterField(
         key = "panel_type",
         label = "Panel Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("OLED", "Mini-LED", "Fast IPS", "IPS", "VA", "TN", "Other")
     )
 
     val resolution = FilterField(
         key = "resolution",
         label = "Resolution",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "1920 × 1080 (FHD)", "1920 × 1200 (WUXGA / FHD+)", "2560 × 1440 (QHD / 2K)",
             "2560 × 1600 (WQXGA / 2.5K)", "2880 × 1800 (2.8K)", "3200 × 2000 (3.2K)",
@@ -120,35 +124,30 @@ object LaptopFilterSchema {
     val cpuBrand = FilterField(
         key = "cpu_brand",
         label = "CPU Brand",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Intel", "AMD", "Apple Silicon", "Qualcomm Snapdragon", "Other")
     )
 
     private val cpuModelsByBrand: Map<String, List<FilterOption>> = mapOf(
         "intel" to options(
-            // Intel Core Ultra (Meteor Lake / Lunar Lake / Arrow Lake, 2023-2025)
-            "Core Ultra 9 288V", "Core Ultra 9 185H",
-            "Core Ultra 7 265H", "Core Ultra 7 258V", "Core Ultra 7 155H",
-            "Core Ultra 5 226V", "Core Ultra 5 135H", "Core Ultra 5 125H", "Core Ultra 5 125U",
-            // Intel Core (9th-14th Gen, 2019-2024)
-            "Core i9-14900HX", "Core i9-13980HX", "Core i9-13900H", "Core i9-12900HK",
-            "Core i9-11980HK", "Core i9-10980HK", "Core i9-9880H", "Core i9-8950HK",
-            "Core i7-14700HX", "Core i7-14650HX", "Core i7-13700HX", "Core i7-13700H",
-            "Core i7-12700H", "Core i7-11800H", "Core i7-10750H", "Core i7-9750H",
-            "Core i7-8750H", "Core i7-7700HQ", "Core i7-6700HQ",
-            "Core i5-14500HX", "Core i5-13500H", "Core i5-12500H", "Core i5-12450H",
-            "Core i5-11400H", "Core i5-10300H"
+            "i7-6700HQ", "i7-6820HK", "i5-6300HQ", "i7-7500U", "i7-7700HQ", "i7-7820HK",
+            "i5-8250U", "i5-8300H", "i7-8550U", "i7-8750H", "i9-8950HK",
+            "i5-9300H", "i7-9750H", "i9-9980HK",
+            "i5-10210U", "i7-1065G7", "i7-10750H", "i9-10980HK",
+            "i5-1135G7", "i7-1165G7", "i7-11800H", "i9-11980HK",
+            "i5-1240P", "i5-12500H", "i7-1260P", "i7-12700H", "i9-12900HK",
+            "i5-1335U", "i5-13500H", "i7-1360P", "i7-13700H", "i9-13980HX",
+            "Core Ultra 5 125H", "Core Ultra 7 155H", "Core Ultra 9 185H",
+            "Core Ultra 5 225H", "Core Ultra 7 255H", "Core Ultra 9 285HX"
         ),
         "amd" to options(
-            // AMD Ryzen (2000-9000 mobile series, 2018-2025)
-            "Ryzen AI Max+ 395", "Ryzen AI Max 390",
-            "Ryzen AI 9 HX 375", "Ryzen AI 9 HX 370", "Ryzen AI 9 365",
-            "Ryzen 9 7945HX / 7945HX3D", "Ryzen 9 7940HS", "Ryzen 9 8945HS",
-            "Ryzen 9 6900HX", "Ryzen 9 5900HX", "Ryzen 9 4900HS",
-            "Ryzen 7 8845HS", "Ryzen 7 8840U", "Ryzen 7 7840HS", "Ryzen 7 7735HS",
-            "Ryzen 7 6800H", "Ryzen 7 5800H", "Ryzen 7 4800H", "Ryzen 7 3750H",
-            "Ryzen 5 8645HS", "Ryzen 5 8640U", "Ryzen 5 7640HS", "Ryzen 5 7535HS",
-            "Ryzen 5 6600H", "Ryzen 5 5600H", "Ryzen 5 2500U"
+            "Ryzen 5 2500U", "Ryzen 7 2700U",
+            "Ryzen 5 3550H", "Ryzen 7 3750H",
+            "Ryzen 5 4500U", "Ryzen 7 4800H", "Ryzen 9 4900HS",
+            "Ryzen 5 5500U", "Ryzen 7 5800H", "Ryzen 9 5900HX",
+            "Ryzen 5 6600U", "Ryzen 7 6800H", "Ryzen 9 6900HX",
+            "Ryzen 5 7530U", "Ryzen 7 7840U", "Ryzen 9 7945HX",
+            "Ryzen AI 9 HX 370", "Ryzen AI 9 365", "Ryzen AI Max+ 395"
         ),
         "apple_silicon" to options(
             // Apple Silicon (2020-2025)
@@ -162,7 +161,7 @@ object LaptopFilterSchema {
             "Snapdragon X Plus (X1P-64-100 / X1P-42-100)",
             "Snapdragon 8cx Gen 3", "Snapdragon 8cx Gen 2", "Snapdragon 8cx (Gen 1)"
         ),
-        "other" to options("Other")
+        "other" to emptyList()
     )
 
     /** Narrows to just the picked [cpuBrand]'s chips — same dependent-options mechanism as [PhoneFilterSchema.socModel]. */
@@ -172,7 +171,7 @@ object LaptopFilterSchema {
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = cpuModelsByBrand.values.flatten().distinctBy { it.id },
         optionsForState = { state ->
-            val selectedBrandIds = (state.valueFor("cpu_brand") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
+            val selectedBrandIds = selectedIdsFor(state, "cpu_brand")
             val matched = selectedBrandIds.flatMap { cpuModelsByBrand[it] ?: emptyList() }.distinctBy { it.id }
             matched.ifEmpty { cpuModelsByBrand.values.flatten().distinctBy { it.id } }
         }
@@ -193,58 +192,70 @@ object LaptopFilterSchema {
         options = options("Integrated Graphics Only (iGPU)", "Dedicated Graphics (dGPU)", "Other")
     )
 
-    private val gpuModelsByConfiguration: Map<String, List<FilterOption>> = mapOf(
-        DGPU_ID to options(
-            // NVIDIA dGPU (Blackwell/Ada/Ampere/Turing/Pascal/Maxwell, 2015-2025)
-            "NVIDIA GeForce RTX 5090 Laptop", "NVIDIA GeForce RTX 5080 Laptop",
-            "NVIDIA GeForce RTX 5070 Ti Laptop", "NVIDIA GeForce RTX 5070 Laptop", "NVIDIA GeForce RTX 5060 Laptop",
-            "NVIDIA GeForce RTX 4090 Laptop", "NVIDIA GeForce RTX 4080 Laptop",
-            "NVIDIA GeForce RTX 4070 Laptop", "NVIDIA GeForce RTX 4060 Laptop", "NVIDIA GeForce RTX 4050 Laptop",
-            "NVIDIA GeForce RTX 3080 Ti Laptop", "NVIDIA GeForce RTX 3080 Laptop",
-            "NVIDIA GeForce RTX 3070 Ti Laptop", "NVIDIA GeForce RTX 3070 Laptop",
-            "NVIDIA GeForce RTX 3060 Laptop", "NVIDIA GeForce RTX 3050 Laptop / 3050 6GB",
-            "NVIDIA GeForce RTX 2080 Super Laptop / Max-Q", "NVIDIA GeForce RTX 2070 Laptop / Max-Q",
-            "NVIDIA GeForce RTX 2060 Laptop",
-            "NVIDIA GeForce GTX 1660 Ti Laptop", "NVIDIA GeForce GTX 1650 Laptop",
-            "NVIDIA GeForce GTX 1070 Laptop", "NVIDIA GeForce GTX 1060 Laptop", "NVIDIA GeForce GTX 1050 Ti Laptop",
-            "NVIDIA GeForce GTX 980M", "NVIDIA GeForce GTX 970M",
-            "NVIDIA RTX 5000 Ada Generation Laptop", "NVIDIA RTX 4000 Ada Generation Laptop",
-            "NVIDIA RTX 3500 Ada Generation Laptop", "NVIDIA RTX 2000 Ada Generation Laptop",
-            "NVIDIA Quadro RTX 5000 (Turing)", "NVIDIA Quadro RTX 3000 (Turing)",
-            // AMD dGPU (RDNA 1-3, 2020-2023)
-            "AMD Radeon RX 7900M", "AMD Radeon RX 7600M XT",
-            "AMD Radeon RX 6850M XT", "AMD Radeon RX 6800M", "AMD Radeon RX 6700M", "AMD Radeon RX 6600M",
-            "AMD Radeon RX 5700M", "AMD Radeon RX 5600M",
-            // Intel Arc dGPU (2022-2023)
-            "Intel Arc A770M", "Intel Arc A730M", "Intel Arc A550M", "Intel Arc A370M"
-        ),
-        "integrated_graphics_only_igpu" to options(
-            // iGPU (Intel, AMD, Apple, Qualcomm, 2016-2025)
-            "Intel Arc Graphics 140V (Lunar Lake)", "Intel Arc Graphics 130V",
-            "Intel Arc Graphics 8-Cores (Meteor Lake)", "Intel Arc Graphics 7-Cores",
-            "Intel Iris Xe Graphics (96EU / 80EU)", "Intel Iris Plus Graphics",
-            "Intel UHD Graphics", "Intel UHD Graphics 620",
-            "AMD Radeon 890M (RDNA 3.5)", "AMD Radeon 880M", "AMD Radeon 780M",
-            "AMD Radeon 760M", "AMD Radeon 680M",
-            "AMD Radeon Vega 10 Graphics", "AMD Radeon Vega 8 Graphics",
-            "Apple M4 Max 40-Core / 32-Core GPU", "Apple M4 Pro 20-Core / 16-Core GPU", "Apple M4 10-Core GPU",
-            "Apple M3 Max 40-Core / 30-Core GPU", "Apple M3 Pro 18-Core / 14-Core GPU", "Apple M3 10-Core GPU",
-            "Apple M2 Max / M2 Pro / M2 GPU", "Apple M1 Max / M1 Pro / M1 GPU",
-            "Qualcomm Adreno GPU (Snapdragon X Elite / Plus)"
-        ),
-        "other" to options("Other")
+    /** Only meaningful once a dGPU is actually in the picture — narrows [gpuModel] to just that brand's dGPU chips. */
+    val gpuBrand = FilterField(
+        key = "gpu_brand",
+        label = "GPU Brand",
+        type = FilterType.ChipGroup(isMultiSelect = false),
+        options = options("NVIDIA", "AMD", "Intel", "Other"),
+        visibleWhen = FieldDependency("gpu_configuration", setOf(DGPU_ID))
     )
 
-    /** Narrows to just the picked [gpuConfiguration]'s chips (dGPU vs iGPU) — same dependent-options mechanism as [PhoneFilterSchema.socModel]. */
+    private val dgpuModelsByBrand: Map<String, List<FilterOption>> = mapOf(
+        "nvidia" to options(
+            "GeForce GTX 1050 Laptop GPU", "GeForce GTX 1050 Ti Laptop GPU", "GeForce GTX 1060 Laptop GPU",
+            "GeForce GTX 1070 Laptop GPU", "GeForce GTX 1080 Laptop GPU", "GeForce GTX 1650 Laptop GPU",
+            "GeForce GTX 1660 Ti Laptop GPU",
+            "GeForce RTX 2060 Laptop GPU", "GeForce RTX 2070 Laptop GPU", "GeForce RTX 2080 Laptop GPU",
+            "GeForce RTX 3050 Laptop GPU", "GeForce RTX 3050 Ti Laptop GPU", "GeForce RTX 3060 Laptop GPU",
+            "GeForce RTX 3070 Laptop GPU", "GeForce RTX 3080 Laptop GPU",
+            "GeForce RTX 4050 Laptop GPU", "GeForce RTX 4060 Laptop GPU", "GeForce RTX 4070 Laptop GPU",
+            "GeForce RTX 4080 Laptop GPU", "GeForce RTX 4090 Laptop GPU",
+            "GeForce RTX 5050 Laptop GPU", "GeForce RTX 5060 Laptop GPU", "GeForce RTX 5070 Laptop GPU",
+            "GeForce RTX 5070 Ti Laptop GPU", "GeForce RTX 5080 Laptop GPU", "GeForce RTX 5090 Laptop GPU"
+        ),
+        "amd" to options(
+            "Radeon RX 460 Mobile", "Radeon RX 560X", "Radeon RX Vega 56 Mobile",
+            "Radeon RX 5500M", "Radeon RX 5600M", "Radeon RX 5700M",
+            "Radeon RX 6600M", "Radeon RX 6700M", "Radeon RX 6800M",
+            "Radeon RX 7600M", "Radeon RX 7600M XT", "Radeon RX 7700S"
+        ),
+        "intel" to options("Intel Arc A770M", "Intel Arc A730M", "Intel Arc A550M", "Intel Arc A370M"),
+        "other" to emptyList()
+    )
+
+    private val igpuModels: List<FilterOption> = options(
+        // iGPU (Intel, AMD, Apple, Qualcomm, 2016-2025)
+        "Intel Arc Graphics 140V (Lunar Lake)", "Intel Arc Graphics 130V",
+        "Intel Arc Graphics 8-Cores (Meteor Lake)", "Intel Arc Graphics 7-Cores",
+        "Intel Iris Xe Graphics (96EU / 80EU)", "Intel Iris Plus Graphics",
+        "Intel UHD Graphics", "Intel UHD Graphics 620",
+        "AMD Radeon 890M (RDNA 3.5)", "AMD Radeon 880M", "AMD Radeon 780M",
+        "AMD Radeon 760M", "AMD Radeon 680M",
+        "AMD Radeon Vega 10 Graphics", "AMD Radeon Vega 8 Graphics",
+        "Apple M4 Max 40-Core / 32-Core GPU", "Apple M4 Pro 20-Core / 16-Core GPU", "Apple M4 10-Core GPU",
+        "Apple M3 Max 40-Core / 30-Core GPU", "Apple M3 Pro 18-Core / 14-Core GPU", "Apple M3 10-Core GPU",
+        "Apple M2 Max / M2 Pro / M2 GPU", "Apple M1 Max / M1 Pro / M1 GPU",
+        "Qualcomm Adreno GPU (Snapdragon X Elite / Plus)"
+    )
+
+    /** Narrows to the picked [gpuConfiguration] first (dGPU vs iGPU), then — for a dGPU — further to the picked [gpuBrand]'s chips, the same two-step narrowing [PhoneFilterSchema.socModel] introduced for SoC Brand/Model. */
     val gpuModel = FilterField(
         key = "gpu_model",
         label = "GPU Model",
         type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
-        options = gpuModelsByConfiguration.values.flatten().distinctBy { it.id },
+        options = (dgpuModelsByBrand.values.flatten() + igpuModels).distinctBy { it.id },
         optionsForState = { state ->
-            val selectedConfigIds = (state.valueFor("gpu_configuration") as? FilterFieldValue.MultiSelect)?.selectedIds ?: emptySet()
-            val matched = selectedConfigIds.flatMap { gpuModelsByConfiguration[it] ?: emptyList() }.distinctBy { it.id }
-            matched.ifEmpty { gpuModelsByConfiguration.values.flatten().distinctBy { it.id } }
+            val selectedConfigIds = selectedIdsFor(state, "gpu_configuration")
+            when {
+                DGPU_ID in selectedConfigIds -> {
+                    val selectedBrandIds = selectedIdsFor(state, "gpu_brand")
+                    val matched = selectedBrandIds.flatMap { dgpuModelsByBrand[it] ?: emptyList() }.distinctBy { it.id }
+                    matched.ifEmpty { dgpuModelsByBrand.values.flatten().distinctBy { it.id } }
+                }
+                "integrated_graphics_only_igpu" in selectedConfigIds -> igpuModels
+                else -> (dgpuModelsByBrand.values.flatten() + igpuModels).distinctBy { it.id }
+            }
         }
     )
 
@@ -255,25 +266,19 @@ object LaptopFilterSchema {
         visibleWhen = FieldDependency("gpu_configuration", setOf(DGPU_ID))
     )
 
-    val muxSwitch = FilterField(
-        key = "mux_switch",
-        label = "MUX Switch / Advanced Optimus (Display Direct)",
-        type = FilterType.SwitchToggle(label = "MUX Switch / Advanced Optimus (Display Direct)")
-    )
-
     // --- Memory (RAM) ---
 
     val memoryCapacity = FilterField(
         key = "memory_capacity",
         label = "Memory Capacity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("8GB", "16GB", "24GB / 32GB", "48GB / 64GB", "96GB / 128GB+", "Other")
     )
 
     val memoryType = FilterField(
         key = "memory_type",
         label = "Memory Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "LPDDR5 / LPDDR5X (Soldered)", "DDR5 SO-DIMM (Slots)", "LPCAMM2 (Modular LPDDR5X)",
             "LPDDR4X / DDR4", "Unified Memory (Apple Silicon)", "Other"
@@ -283,7 +288,7 @@ object LaptopFilterSchema {
     val upgradability = FilterField(
         key = "upgradability",
         label = "Upgradability",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "Dual SO-DIMM Slots (Fully Upgradable)", "1 Slot + On-board RAM (Semi-Upgradable)",
             "Fully Soldered (Non-upgradable)", "Other"
@@ -295,21 +300,21 @@ object LaptopFilterSchema {
     val installedCapacity = FilterField(
         key = "installed_capacity",
         label = "Installed Capacity",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("512GB", "1TB", "2TB", "4TB+", "Other")
     )
 
     val storageInterface = FilterField(
         key = "storage_interface",
         label = "Storage Interface",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("PCIe 5.0 NVMe M.2", "PCIe 4.0 NVMe M.2", "PCIe 3.0 NVMe M.2", "Soldered Storage", "Other")
     )
 
     val m2SlotsCount = FilterField(
         key = "m2_slots_count",
         label = "M.2 Slots Count",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("1 × M.2 Slot", "2 × M.2 Slots", "3 × M.2 Slots", "Other")
     )
 
@@ -376,7 +381,7 @@ object LaptopFilterSchema {
     val chassisMaterial = FilterField(
         key = "chassis_material",
         label = "Chassis Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options(
             "All-Aluminum CNC", "Magnesium-Aluminum Alloy", "Carbon Fiber",
             "Polycarbonate / Plastic", "Hybrid (Metal Lid + Plastic Body)", "Other"
@@ -388,14 +393,8 @@ object LaptopFilterSchema {
     val keyboardBacklight = FilterField(
         key = "keyboard_backlight",
         label = "Keyboard Backlight",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Per-Key RGB", "Zone RGB", "Single White Backlight", "Non-Backlit", "Other")
-    )
-
-    val dedicatedNumpad = FilterField(
-        key = "dedicated_numpad",
-        label = "Dedicated Numeric Keypad (Numpad)",
-        type = FilterType.SwitchToggle(label = "Dedicated Numeric Keypad (Numpad)")
     )
 
     val trackpadType = FilterField(
@@ -425,14 +424,14 @@ object LaptopFilterSchema {
     val webcamResolution = FilterField(
         key = "webcam_resolution",
         label = "Webcam Resolution",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("1080p FHD", "1440p QHD", "720p HD", "Other")
     )
 
     val builtInSpeakers = FilterField(
         key = "built_in_speakers",
         label = "Built-in Speakers",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("2 Speakers", "4 Speakers", "6 Speakers", "Other")
     )
 
@@ -443,6 +442,13 @@ object LaptopFilterSchema {
         options = options("Dolby Atmos", "DTS:X", "Hi-Res Audio", "Other")
     )
 
+    val features = FilterField(
+        key = "features",
+        label = "Features",
+        type = FilterType.CheckboxList,
+        options = options("MUX Switch / Advanced Optimus (Display Direct)", "Dedicated Numeric Keypad (Numpad)")
+    )
+
     val schema = CategoryFilterSchema(
         sections = listOf(
             brand,
@@ -450,15 +456,16 @@ object LaptopFilterSchema {
             primaryScreenSize, secondaryScreenSize, aspectRatio, panelType, resolution, refreshRate,
             srgbCoverage, dciP3Coverage, adobeRgbCoverage, peakBrightness, screenFeatures,
             cpuBrand, cpuModel, npuTops,
-            gpuConfiguration, gpuModel, gpuPowerLimit, muxSwitch,
+            gpuConfiguration, gpuBrand, gpuModel, gpuPowerLimit,
             memoryCapacity, memoryType, upgradability,
             installedCapacity, storageInterface, m2SlotsCount,
             ports, wirelessConnectivity, bluetoothVersion,
             batteryCapacity, officialBatteryLife, chargingInterface,
             weight, thickness, chassisMaterial,
-            keyboardBacklight, dedicatedNumpad, trackpadType,
+            keyboardBacklight, trackpadType,
             biometricsSecurity,
-            webcamResolution, builtInSpeakers, audioStandards
+            webcamResolution, builtInSpeakers, audioStandards,
+            features
         )
     )
 }

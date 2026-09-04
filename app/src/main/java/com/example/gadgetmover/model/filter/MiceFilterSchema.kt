@@ -12,19 +12,32 @@ object MiceFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Logitech", "Logitech G", "Razer", "SteelSeries", "Corsair", "ASUS ROG", "Glorious", "Pulsar",
-            "Zowie (BenQ)", "Finalmouse", "Endgame Gear", "Lamzu", "VXE", "VGN", "Attack Shark", "G-Wolves",
-            "Xtrfy", "HyperX", "Cooler Master", "ROCCAT", "Redragon", "Rapoo", "Dareu", "Fantech",
-            "Pwnage", "Vaxee", "Ninjutso", "Other"
+            "3Dconnexion", "8BitDo", "A4Tech", "Acer", "AG One", "Ajazz", "Alienware", "Amazon Basics",
+            "Anker", "Apple", "ASRock", "ASUS", "ASUS ROG", "ATK", "Attack Shark", "AULA", "BenQ",
+            "BenQ Zowie", "Bloody", "Cherry", "Cooler Master", "Corsair", "Cougar", "Dareu", "Darmoshark",
+            "Delux", "Dell", "Dream Machines", "Edifier Hecate", "Elecom", "Endgame Gear", "E-YOOSO", "EVGA",
+            "Fantech", "Finalmouse", "Fnatic Gear", "Fuhlen", "GameSir", "Genius", "Gigabyte",
+            "Gigabyte Aorus", "Glorious", "Gravastar", "G-Wolves", "Hama", "Havit", "HP", "HyperX",
+            "iBuypower", "iClever", "iMICE", "Incott", "Inphic", "InWin", "Ironcat", "JLab", "Keychron",
+            "Kensington", "KeyX", "Kingston", "Klim", "Kone", "Kysona", "Lamzu", "Langtu", "Lemokey",
+            "Lenovo", "Lenovo Legion", "Lofree", "Logitech", "Logitech G", "Mad Catz", "Madlions",
+            "Machenike", "MageGee", "Marvo", "Matias", "MCHOSE", "Meetion", "Metapanda", "Microsoft",
+            "Monka", "Monoprice", "Motospeed", "MSI", "Nacon", "Ninjutso", "Nulea", "NZXT", "Omen",
+            "Patriot Viper", "Perixx", "Phylina", "Ploopy", "Pulsar", "QPAD", "Rapoo", "RAWM", "Razer",
+            "Redragon", "Rexus", "Rii", "Roccat", "Rosewill", "Sades", "Samsung", "Santali", "Satechi",
+            "Scyrox", "Seenda", "Sharkoon", "Sony", "Speedlink", "SteelSeries", "Swiftpoint", "Tecware",
+            "Thermaltake", "Thunderobot", "Titanwolf", "Trust", "Turtle Beach", "Ugreen", "UtechSmart",
+            "Varmilo", "VAXEE", "Venom", "VGN", "VXE", "Waizowl", "WLMOUSE", "Xiaomi", "Xtrfy", "Zaopin",
+            "Zelotes", "Ziyoulang", "Unknown"
         )
     )
 
     val gripStyle = FilterField(
         key = "grip_style",
         label = "Grip Style",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Symmetrical", "Right-handed Ergonomic", "Left-handed Ergonomic", "Vertical / Ergonomic", "Other")
     )
 
@@ -55,8 +68,7 @@ object MiceFilterSchema {
             "PixArt PMW3389", "PixArt PMW3360", "PixArt PAW3335", "PixArt PAW3311", "PixArt PAW3212",
             "Razer Focus Pro 35K Gen-2", "Razer Focus Pro 30K", "Razer Focus+ 20K",
             "Logitech HERO 2 (HERO 32K)", "Logitech HERO 25K", "Logitech HERO 16K",
-            "SteelSeries TrueMove Air", "SteelSeries TrueMove Pro", "SteelSeries TrueMove 3+",
-            "Other"
+            "SteelSeries TrueMove Air", "SteelSeries TrueMove Pro", "SteelSeries TrueMove 3+"
         )
     )
 
@@ -77,7 +89,7 @@ object MiceFilterSchema {
     val switchType = FilterField(
         key = "switch_type",
         label = "Switch Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Optical Microswitch", "Mechanical Microswitch", "Silent Microswitch", "Other")
     )
 
@@ -92,14 +104,21 @@ object MiceFilterSchema {
             "Kailh GM 8.0 (Black Mamba)", "Kailh GM 4.0 (Red)", "Kailh GM 2.0 (Blue)", "Kailh Optical", "Kailh Mute Silent",
             "Omron D2FC-F-K 50M (Blue Dot)", "Omron 20M (White Dot)", "Omron Optical Switch (D2FP-FN2)", "Omron D2F-01F (Japanese Grey Dot)",
             "Razer Gen-3 Optical", "Razer Gen-2 Optical", "Razer Gen-1 Optical",
-            "Other"
+            "D2F-01F", "D2F-01", "D2FC-F-7N", "D2FC-F-7N 10M", "D2FC-F-7N 20M", "D2FC-F-7N 50M",
+            "D2FC-F-K 50M", "D2FC-F-K 60M", "D2FP-FN2", "D2FP-FN2 60M",
+            "GM 2.0 Teal", "GM 4.0 Red", "GM 8.0 Black", "GM 9.0 Burgundy", "GM 10.0 Blue", "GM 11.0 White",
+            "Silent Square Red Dot", "Silent Square Yellow Dot",
+            "Blue Shell Blue Dot", "Blue Shell White Dot", "Blue Shell Pink Dot",
+            "Black Shell Blue Dot", "Black Shell Green Dot",
+            "Transparent Blue Shell Pink Dot", "Transparent White Shell White Dot", "Silent Brown Shell Yellow Dot",
+            "Gold 30M", "Gold 60M", "Gold 80M", "Gold 100M", "Silver 80M", "Dustproof Gold 80M", "Silent 30M"
         )
     )
 
     val scrollWheelType = FilterField(
         key = "scroll_wheel_type",
         label = "Scroll Wheel Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Standard", "Free-spin / Infinite Scroll", "Dual-mode SmartWheel", "Horizontal Scroll / Tilt Wheel", "Other")
     )
 
@@ -114,7 +133,7 @@ object MiceFilterSchema {
     val batteryType = FilterField(
         key = "battery_type",
         label = "Battery Type",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Dry Battery / Replaceable (AA / AAA)", "Built-in Lithium-ion Rechargeable", "Wired Only (No Battery)", "Other")
     )
 
@@ -136,8 +155,7 @@ object MiceFilterSchema {
             "Honeycomb / Lightweight Shell",
             "Multi-device Pairing",
             "Hot-swappable Switch Sockets",
-            "PTFE Skates / Glass Skates Included",
-            "Other"
+            "PTFE Skates / Glass Skates Included"
         )
     )
 

@@ -12,10 +12,11 @@ object PcCaseFilterSchema {
     val brand = FilterField(
         key = "brand",
         label = "Brand",
-        type = FilterType.SearchablePopupSelect(isMultiSelect = true, allowCustomInput = true),
+        type = FilterType.SearchablePopupSelect(isMultiSelect = false, allowCustomInput = true),
         options = options(
-            "Lian Li", "NZXT", "Corsair", "Fractal Design", "be quiet!", "Cooler Master",
-            "Phanteks", "Thermaltake", "ASUS ROG", "Hyte", "Montech", "DeepCool", "Other"
+            "Lian Li", "NZXT", "Corsair", "Fractal Design", "Cooler Master", "Phanteks", "HYTE",
+            "be quiet!", "Thermaltake", "Antec", "DeepCool", "Montech", "SSUPD", "Jonsbo",
+            "ASUS (ROG / TUF)", "MSI", "Gigabyte", "InWin", "SAMA", "Unknown"
         )
     )
 
@@ -43,7 +44,7 @@ object PcCaseFilterSchema {
     val sidePanelMaterial = FilterField(
         key = "side_panel_material",
         label = "Side Panel Material",
-        type = FilterType.ChipGroup(isMultiSelect = true),
+        type = FilterType.ChipGroup(isMultiSelect = false),
         options = options("Tempered Glass", "Mesh", "Acrylic", "Solid Steel", "Other"),
         hiddenWhen = FieldDependency("case_type", setOf(PANORAMIC_GLASS_ID))
     )
@@ -109,7 +110,7 @@ object PcCaseFilterSchema {
         key = "features",
         label = "Features",
         type = FilterType.CheckboxList,
-        options = options("LCD Display", "Back-Connect Motherboard Support", "Other")
+        options = options("LCD Display", "Back-Connect Motherboard Support")
     )
 
     val schema = CategoryFilterSchema(
