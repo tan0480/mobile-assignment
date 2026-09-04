@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.model.BuyOrder
 import com.example.gadgetmover.model.Order
@@ -131,13 +132,23 @@ fun BuyConfirmationScreen(
 
 @Composable
 private fun OrderRow(label: String, value: String) {
+    // SpaceBetween alone only distributes leftover space — for a short value that's plenty of gap,
+    // but a long value (e.g. a long product title) can wrap and claim nearly the whole row, leaving
+    // no gap at all against the label. spacedBy guarantees a minimum gap either way, and the value
+    // gets its own weighted column so it wraps there instead of crowding the label.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
     }
 }

@@ -901,9 +901,14 @@ private fun RowScope.StepCircle(index: Int, label: String, currentStep: Int) {
 private fun requiredBrandField(category: ProductCategory?): FilterField? =
     category?.let { CategoryFilterRegistry.schemaFor(it) }?.sections?.find { it.key == "brand" }
 
+const val TITLE_CHAR_LIMIT = 100
+const val DESCRIPTION_CHAR_LIMIT = 2000
+
 private fun isStepValid(step: Int, draft: ListingDraft): Boolean = when (step) {
     1 -> draft.category != null
     2 -> draft.title.isNotBlank() &&
+        draft.title.length <= TITLE_CHAR_LIMIT &&
+        draft.description.length <= DESCRIPTION_CHAR_LIMIT &&
         draft.fulfillmentMethods.isNotEmpty() &&
         (FulfillmentMethod.MEETUP !in draft.fulfillmentMethods || draft.meetupLocations.isNotEmpty())
     3 -> requiredBrandField(draft.category)?.let { draft.categorySpecs.valueFor(it.key).isFilled(it) } ?: true
@@ -1042,7 +1047,14 @@ private fun StepConditionAndBasics(draft: ListingDraft, onChange: (ListingDraft)
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true,
-                placeholder = { Text("e.g. Keychron Q1 Pro Custom Build") }
+                placeholder = { Text("e.g. Keychron Q1 Pro Custom Build") },
+                isError = draft.title.length > TITLE_CHAR_LIMIT,
+                supportingText = {
+                    Text(
+                        if (draft.title.length > TITLE_CHAR_LIMIT) "Title cannot exceed $TITLE_CHAR_LIMIT characters"
+                        else "${draft.title.length} / $TITLE_CHAR_LIMIT"
+                    )
+                }
             )
         }
         LabeledField("Description") {
@@ -1053,7 +1065,14 @@ private fun StepConditionAndBasics(draft: ListingDraft, onChange: (ListingDraft)
                     .fillMaxWidth()
                     .height(120.dp),
                 shape = RoundedCornerShape(12.dp),
-                placeholder = { Text("Describe the item's condition, usage history, and reason for selling") }
+                placeholder = { Text("Describe the item's condition, usage history, and reason for selling") },
+                isError = draft.description.length > DESCRIPTION_CHAR_LIMIT,
+                supportingText = {
+                    Text(
+                        if (draft.description.length > DESCRIPTION_CHAR_LIMIT) "Description cannot exceed $DESCRIPTION_CHAR_LIMIT characters"
+                        else "${draft.description.length} / $DESCRIPTION_CHAR_LIMIT"
+                    )
+                }
             )
         }
         Text("Condition", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
