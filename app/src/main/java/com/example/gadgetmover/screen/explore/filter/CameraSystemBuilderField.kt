@@ -175,6 +175,7 @@ private fun CameraRequirementCard(
                         exact = requirement.resolutionExactMp, onExactChange = { onChange(requirement.copy(resolutionExactMp = it)) },
                         min = requirement.resolutionMinMp, onMinChange = { onChange(requirement.copy(resolutionMinMp = it)) },
                         max = requirement.resolutionMaxMp, onMaxChange = { onChange(requirement.copy(resolutionMaxMp = it)) },
+                        onRangeChange = { newMin, newMax -> onChange(requirement.copy(resolutionMinMp = newMin, resolutionMaxMp = newMax)) },
                         unit = " MP",
                         sliderRange = 0f..200f,
                         sliderDecimals = 0
@@ -202,6 +203,7 @@ private fun CameraRequirementCard(
                         exact = requirement.apertureExactF, onExactChange = { onChange(requirement.copy(apertureExactF = it)) },
                         min = requirement.apertureMinF, onMinChange = { onChange(requirement.copy(apertureMinF = it)) },
                         max = requirement.apertureMaxF, onMaxChange = { onChange(requirement.copy(apertureMaxF = it)) },
+                        onRangeChange = { newMin, newMax -> onChange(requirement.copy(apertureMinF = newMin, apertureMaxF = newMax)) },
                         unit = "", prefix = "f/",
                         sliderRange = 0.6f..8.0f,
                         sliderDecimals = 2
@@ -228,6 +230,7 @@ private fun CameraRequirementCard(
                         exact = requirement.zoomExact, onExactChange = { onChange(requirement.copy(zoomExact = it)) },
                         min = requirement.zoomMin, onMinChange = { onChange(requirement.copy(zoomMin = it)) },
                         max = requirement.zoomMax, onMaxChange = { onChange(requirement.copy(zoomMax = it)) },
+                        onRangeChange = { newMin, newMax -> onChange(requirement.copy(zoomMin = newMin, zoomMax = newMax)) },
                         unit = "×",
                         sliderRange = 1f..100f,
                         sliderDecimals = 1
@@ -279,6 +282,15 @@ private fun RangeableNumericField(
     exact: String, onExactChange: (String) -> Unit,
     min: String, onMinChange: (String) -> Unit,
     max: String, onMaxChange: (String) -> Unit,
+    /**
+     * Commits both bounds from a single [RangeSlider] drag event in one call — the drag can't go
+     * through [onMinChange]+[onMaxChange] as two separate calls, since both closures capture the
+     * same pre-drag [CameraRequirement] snapshot and nothing recomposes between them, so the
+     * second call's `.copy()` would silently overwrite the first (only the max bound would ever
+     * stick). Defaults to that broken two-call sequence for compatibility, but every call site
+     * below overrides it with a proper single-`.copy()` update.
+     */
+    onRangeChange: (min: String, max: String) -> Unit = { newMin, newMax -> onMinChange(newMin); onMaxChange(newMax) },
     unit: String,
     prefix: String = "",
     sliderRange: ClosedFloatingPointRange<Float>,
@@ -306,10 +318,7 @@ private fun RangeableNumericField(
             )
             RangeSlider(
                 value = current,
-                onValueChange = { newRange ->
-                    onMinChange(format(newRange.start))
-                    onMaxChange(format(newRange.endInclusive))
-                },
+                onValueChange = { newRange -> onRangeChange(format(newRange.start), format(newRange.endInclusive)) },
                 valueRange = sliderRange
             )
         }
