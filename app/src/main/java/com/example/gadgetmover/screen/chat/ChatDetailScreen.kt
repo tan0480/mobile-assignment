@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.ChatRepository
 import com.example.gadgetmover.data.ProductRepository
 import com.example.gadgetmover.model.ChatThread
@@ -75,6 +76,7 @@ import com.example.gadgetmover.model.MessageType
 import com.example.gadgetmover.model.Product
 import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.screen.components.AppPullToRefreshBox
+import com.example.gadgetmover.screen.components.FullScreenImageViewer
 import com.example.gadgetmover.screen.components.PickedLocation
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.util.formatDisplayDate
@@ -137,6 +139,7 @@ fun ChatDetailScreen(
     var showAttachmentMenu by remember { mutableStateOf(false) }
     var showProductPickerFor by remember { mutableStateOf<AttachmentAction?>(null) }
     var offerProduct by remember { mutableStateOf<Product?>(null) }
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
 
     val pickPhoto = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -188,6 +191,10 @@ fun ChatDetailScreen(
                 }
             }
         )
+    }
+
+    previewImageUrl?.let { url ->
+        FullScreenImageViewer(imageUrl = url, onDismiss = { previewImageUrl = null })
     }
 
     offerProduct?.let { product ->
@@ -259,7 +266,7 @@ fun ChatDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(messages) { _, message ->
-                        ChatBubble(message, onProductClick, onNegotiatedCheckout)
+                        ChatBubble(message, onProductClick, onNegotiatedCheckout, onImageClick = { previewImageUrl = it })
                     }
                 }
 
@@ -367,7 +374,8 @@ private enum class AttachmentAction { SHARE_PRODUCT, SPECIAL_PRICE }
 private fun ChatBubble(
     message: Message,
     onProductClick: (String) -> Unit,
-    onNegotiatedCheckout: (productId: String, transactionType: ListingType, price: Double) -> Unit
+    onNegotiatedCheckout: (productId: String, transactionType: ListingType, price: Double) -> Unit,
+    onImageClick: (String) -> Unit
 ) {
     val alignment = if (message.isFromMe) Alignment.End else Alignment.Start
     val bubbleColor = if (message.isFromMe) BrandOrange else MaterialTheme.colorScheme.surfaceVariant
@@ -393,7 +401,10 @@ private fun ChatBubble(
                 contentDescription = "Photo",
                 modifier = Modifier
                     .size(200.dp)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(enabled = message.metadata?.imageUrl != null) {
+                        message.metadata?.imageUrl?.let(onImageClick)
+                    },
                 contentScale = ContentScale.Crop
             )
 
@@ -470,6 +481,11 @@ private fun ChatBubble(
                 val productId = message.metadata?.productId
                 val liveProduct = productId?.let { ProductRepository.getById(it) }
                 val soldOut = liveProduct == null || liveProduct.status == ProductStatus.SOLD
+                // The seller is the one who sends this offer in the first place — their own copy
+                // of the thread shouldn't offer a "Buy Now"/"Rent" straight into checkout for
+                // their own listing, same as the product detail page already hides those for
+                // the owner (see ProductDetailScreen's isOwner check).
+                val isOwnListing = liveProduct?.sellerId == AuthRepository.currentUser.value?.id
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -513,18 +529,22 @@ private fun ChatBubble(
                         val rentalRate = message.metadata?.offerRentalRate
                         if (salePrice != null) {
                             OfferPriceRow(liveProduct.price, salePrice)
-                            Button(
-                                onClick = { onNegotiatedCheckout(productId, ListingType.BUY, salePrice) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Buy Now — ${formatMoney(salePrice)}") }
+                            if (!isOwnListing) {
+                                Button(
+                                    onClick = { onNegotiatedCheckout(productId, ListingType.BUY, salePrice) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Buy Now — ${formatMoney(salePrice)}") }
+                            }
                             if (rentalRate != null) Spacer(modifier = Modifier.height(8.dp))
                         }
                         if (rentalRate != null) {
                             OfferPriceRow(liveProduct.rentalRatePerDay, rentalRate, suffix = "/day")
-                            OutlinedButton(
-                                onClick = { onNegotiatedCheckout(productId, ListingType.RENT, rentalRate) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Rent — ${formatMoney(rentalRate)}/day") }
+                            if (!isOwnListing) {
+                                OutlinedButton(
+                                    onClick = { onNegotiatedCheckout(productId, ListingType.RENT, rentalRate) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Rent — ${formatMoney(rentalRate)}/day") }
+                            }
                         }
                     }
                 }
