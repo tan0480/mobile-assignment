@@ -41,10 +41,26 @@ import androidx.compose.ui.unit.dp
 import com.example.gadgetmover.data.AuthRepository
 import com.example.gadgetmover.data.OrderRepository
 import com.example.gadgetmover.data.ProductRepository
+import com.example.gadgetmover.model.Order
 import com.example.gadgetmover.model.OrderStatus
+import com.example.gadgetmover.model.PaymentRecordStatus
 import com.example.gadgetmover.ui.theme.BrandBlueDark
 import com.example.gadgetmover.ui.theme.SuccessGreen
+import com.example.gadgetmover.util.estimatedPayout
 import com.example.gadgetmover.util.formatMoney
+
+/**
+ * True once this order's payout has actually landed in the seller's/owner's wallet — the
+ * `release_order_payout` trigger (schema.sql) fires exactly on the transition into TO_REVIEW
+ * (BUY: buyer confirmed receipt; RENT: owner confirmed the item's return), and COMPLETED is
+ * always reached *from* TO_REVIEW afterward, so together they're precisely "money already
+ * released." PAID/SHIPPED/RENTAL_SHIPPED/RENTING/RETURN_PENDING orders haven't paid out yet;
+ * CANCELLED and the return/refund-dispute statuses (RETURN_REQUESTED and onward, REFUNDED) never
+ * released a payout to begin with — a return dispute can only be opened before the order reaches
+ * TO_REVIEW, so there's no risk of double-counting an order that paid out and later got refunded.
+ */
+private fun Order.payoutReleased(): Boolean =
+    paymentStatus == PaymentRecordStatus.PAID && status in setOf(OrderStatus.TO_REVIEW, OrderStatus.COMPLETED)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +69,17 @@ fun AnalyticsScreen(onBackClick: () -> Unit) {
     val myListings = ProductRepository.myListings(user?.id.orEmpty())
     val sales = OrderRepository.mySales()
     val activeRentals = OrderRepository.myLeases().count { it.status == OrderStatus.ACTIVE }
-    val totalRevenue = sales.sumOf { it.price } + OrderRepository.myLeases().sumOf { it.totalAmount }
+
+    // Net revenue — what actually landed in the wallet, not the raw amount the buyer/renter paid:
+    // estimatedPayout() (same formula the real release_order_payout SQL trigger uses) already
+    // strips the refundable rental deposit and the platform fee out of totalAmount/price. Only
+    // orders whose payout has actually released count at all, so an order still mid-flight (or
+    // cancelled/refunded before ever paying out) can't inflate this number.
+    val paidSales = sales.filter { it.payoutReleased() }
+    val paidLeases = OrderRepository.myLeases().filter { it.payoutReleased() }
+    val salesRevenue = paidSales.sumOf { estimatedPayout(it) }
+    val rentalRevenue = paidLeases.sumOf { estimatedPayout(it) }
+    val netRevenue = salesRevenue + rentalRevenue
 
     Scaffold(
         topBar = {
@@ -104,11 +130,22 @@ fun AnalyticsScreen(onBackClick: () -> Unit) {
                 StatCard(
                     icon = Icons.Filled.Payments,
                     tint = SuccessGreen,
-                    label = "Total revenue",
-                    value = formatMoney(totalRevenue),
+                    label = "Net Revenue",
+                    value = formatMoney(netRevenue),
                     modifier = Modifier.weight(1f)
                 )
             }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "${formatMoney(salesRevenue)} from sales · ${formatMoney(rentalRevenue)} from rentals",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "* Excludes refundable rental deposits and platform fees, and only counts orders whose payout has actually released — cancelled or still-in-progress orders aren't included.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
             Text("Seller rating", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

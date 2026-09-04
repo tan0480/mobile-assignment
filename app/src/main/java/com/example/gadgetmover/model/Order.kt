@@ -28,7 +28,10 @@ enum class OrderStatus(val label: String) {
     RETURN_REQUESTED("Return Requested"),
     RETURN_AWAITING_SHIP("Return Approved"),
     RETURN_AWAITING_RECEIPT("Return Shipped"),
-    REFUNDED("Refunded")
+    REFUNDED("Refunded");
+
+    /** Whether an order in this status is fully wrapped up and safe to remove from My Activities — mirrors the check in `hide_order_for_current_user` (schema.sql), which is the actual enforcement point. */
+    val isDeletable: Boolean get() = this == COMPLETED || this == CANCELLED || this == REFUNDED || this == RETURNED
 }
 
 /** Which granular [OrderStatus] values fall under each My Activities status-filter chip for a BUY order (Purchases/Sales tabs). `statuses == null` means "All" (no filter). */

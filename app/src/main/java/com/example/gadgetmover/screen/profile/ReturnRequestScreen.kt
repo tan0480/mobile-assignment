@@ -80,6 +80,7 @@ import kotlinx.coroutines.launch
 
 private const val MAX_RETURN_REQUEST_PHOTOS = 5
 private const val MAX_RETURN_REQUEST_ATTEMPTS = 2
+private const val RETURN_REASON_CHAR_LIMIT = 500
 
 /**
  * Buyer-submitted return/refund dispute — one screen with two modes depending on which side of
@@ -221,10 +222,12 @@ private fun SubmitReturnRequestForm(
     val shippingFee = order.checkout.shippingFee
     val refundCap = order.price - shippingFee
     val refundAmount = refundAmountText.toDoubleOrNull()
+    val reasonOtherOverLimit = reasonOther.length > RETURN_REASON_CHAR_LIMIT
+    val descriptionOverLimit = description.length > RETURN_REASON_CHAR_LIMIT
     val canSubmit = when (requestType) {
         ReturnRequestType.RETURN -> selectedMethods.isNotEmpty() && (ReturnMethod.MEETUP !in selectedMethods || selectedMeetups.isNotEmpty())
         ReturnRequestType.REFUND -> refundAmount != null && refundAmount > 0 && refundAmount <= refundCap
-    } && (reason != "Other" || reasonOther.isNotBlank())
+    } && (reason != "Other" || reasonOther.isNotBlank()) && !reasonOtherOverLimit && !descriptionOverLimit
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         if (previousRequest?.status == ReturnRequestStatus.REJECTED) {
@@ -261,7 +264,14 @@ private fun SubmitReturnRequestForm(
                 value = reasonOther,
                 onValueChange = { reasonOther = it },
                 label = { Text("Tell us more") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                isError = reasonOtherOverLimit,
+                supportingText = {
+                    Text(
+                        if (reasonOtherOverLimit) "Reason cannot exceed $RETURN_REASON_CHAR_LIMIT characters"
+                        else "${reasonOther.length} / $RETURN_REASON_CHAR_LIMIT"
+                    )
+                }
             )
         }
 
@@ -359,7 +369,14 @@ private fun SubmitReturnRequestForm(
             onValueChange = { description = it },
             label = { Text("Description") },
             minLines = 3,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            isError = descriptionOverLimit,
+            supportingText = {
+                Text(
+                    if (descriptionOverLimit) "Reason cannot exceed $RETURN_REASON_CHAR_LIMIT characters"
+                    else "${description.length} / $RETURN_REASON_CHAR_LIMIT"
+                )
+            }
         )
 
         Spacer(modifier = Modifier.height(12.dp))

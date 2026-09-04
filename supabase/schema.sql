@@ -500,8 +500,8 @@ begin
         raise exception 'Order not found';
     end if;
 
-    if v_order.status not in ('COMPLETED', 'CANCELLED') then
-        raise exception 'Only completed or cancelled orders can be removed';
+    if v_order.status not in ('COMPLETED', 'CANCELLED', 'REFUNDED', 'RETURNED') then
+        raise exception 'Only completed, cancelled, or refunded orders can be removed';
     end if;
 
     if auth.uid() = v_order.buyer_id then
@@ -994,8 +994,10 @@ create trigger on_return_order_refunded
 -- arrived), and separately refunds a buyer/renter whose order gets cancelled. All three are side
 -- effects of an already-authorized status change (advance_order_status), so no separate
 -- client-callable RPC is needed — a client can only ever trigger this by making a transition it
--- was already allowed to make. Every refund here excludes the shipping fee — it's a real courier
--- cost already spent, unlike the platform fee, which the buyer still gets back.
+-- was already allowed to make. The return/refund-dispute refund excludes the shipping fee (a real
+-- courier cost already spent by that point, unlike the platform fee, which the buyer still gets
+-- back either way); a plain cancellation refunds the shipping fee too, since it's only reachable
+-- pre-shipment, when no courier cost has actually been incurred yet.
 create or replace function public.release_order_payout()
 returns trigger
 language plpgsql
@@ -1024,9 +1026,12 @@ begin
         update public.profiles set wallet_balance = wallet_balance + v_refund where id = new.buyer_id;
     end if;
 
+    -- Unlike a post-shipment return/refund above, a straight cancellation is only ever reachable
+    -- from the client while the order is still PAID (nothing has shipped yet — see actionsFor()
+    -- in MyActivitiesScreen.kt, which only offers "Cancel Order" at PAID), so no courier cost has
+    -- actually been spent; the shipping fee is refunded in full along with everything else.
     if new.status = 'CANCELLED' and old.status in ('PAID', 'SHIPPED', 'RENTAL_SHIPPED') then
-        v_shipping_fee := coalesce((new.checkout_details->>'shippingFee')::numeric, 0);
-        v_refund := new.total_amount - v_shipping_fee;
+        v_refund := new.total_amount;
         insert into public.wallet_transactions (user_id, type, amount, description)
             values (new.buyer_id, 'REFUND', v_refund, new.product_title);
         update public.profiles set wallet_balance = wallet_balance + v_refund where id = new.buyer_id;
@@ -1093,13 +1098,25 @@ create table if not exists public.reviews (
     comment text not null default '',
     created_at timestamptz not null default now()
 );
+
+-- Photos the buyer attaches to their review (review-photos Storage bucket below), and the
+-- seller's public reply to it — one reply per review, editable by re-calling reply_to_review.
+alter table public.reviews add column if not exists image_urls text[] not null default '{}';
+alter table public.reviews add column if not exists seller_reply text;
+alter table public.reviews add column if not exists seller_replied_at timestamptz;
+
 alter table public.reviews enable row level security;
 drop policy if exists "reviews are publicly readable" on public.reviews;
 create policy "reviews are publicly readable"
     on public.reviews for select
     using (true);
 
-create or replace function public.submit_review(p_order_id uuid, p_rating smallint, p_comment text)
+-- Widens the signature to accept the review's photos — drop the old 3-arg version first since
+-- `create or replace` can't change a function's parameter list, it would just create a second
+-- overload alongside the old one.
+drop function if exists public.submit_review(uuid, smallint, text);
+
+create or replace function public.submit_review(p_order_id uuid, p_rating smallint, p_comment text, p_image_urls text[] default '{}')
 returns public.reviews
 language plpgsql
 security definer
@@ -1123,8 +1140,8 @@ begin
         raise exception 'This order has already been reviewed';
     end if;
 
-    insert into public.reviews (order_id, product_id, reviewer_id, seller_id, rating, comment)
-    values (p_order_id, v_order.product_id, auth.uid(), v_order.seller_id, p_rating, p_comment)
+    insert into public.reviews (order_id, product_id, reviewer_id, seller_id, rating, comment, image_urls)
+    values (p_order_id, v_order.product_id, auth.uid(), v_order.seller_id, p_rating, p_comment, coalesce(p_image_urls, '{}'))
     returning * into v_review;
 
     -- Leaving a review immediately completes the order rather than waiting out the rest of the
@@ -1136,7 +1153,37 @@ begin
 end;
 $$;
 
-grant execute on function public.submit_review(uuid, smallint, text) to authenticated;
+grant execute on function public.submit_review(uuid, smallint, text, text[]) to authenticated;
+
+-- The reviewed seller's public reply, shown alongside the review to anyone browsing their
+-- profile (same "reviews are publicly readable" policy covers it). Callable repeatedly to edit
+-- an existing reply — no separate "already replied" guard, unlike submit_review's one-shot rule.
+create or replace function public.reply_to_review(p_review_id uuid, p_reply text)
+returns public.reviews
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_review public.reviews%rowtype;
+begin
+    select * into v_review from public.reviews where id = p_review_id;
+    if not found then
+        raise exception 'Review not found';
+    end if;
+    if auth.uid() != v_review.seller_id then
+        raise exception 'Only the reviewed seller may reply to this review';
+    end if;
+
+    update public.reviews set seller_reply = p_reply, seller_replied_at = now()
+        where id = p_review_id
+        returning * into v_review;
+
+    return v_review;
+end;
+$$;
+
+grant execute on function public.reply_to_review(uuid, text) to authenticated;
 
 create or replace function public.recompute_seller_rating()
 returns trigger
@@ -1474,6 +1521,26 @@ create policy "buyers can upload their own return photos"
     with check (bucket_id = 'return-request-photos' and exists (
         select 1 from public.orders o where o.id::text = (storage.foldername(name))[1] and auth.uid() = o.buyer_id
     ));
+
+-- ============================================================================
+-- 14. Storage: review-photos bucket
+-- Photos a buyer attaches to a review, uploaded to `{reviewerId}/{orderId}/{index}.jpg`. Public
+-- bucket, same shape as product-images — reviews are publicly readable, so their photos are too;
+-- upload restricted to the reviewer's own `{uid}/...` folder.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('review-photos', 'review-photos', true)
+on conflict (id) do nothing;
+
+drop policy if exists "review photos are publicly readable" on storage.objects;
+create policy "review photos are publicly readable"
+    on storage.objects for select
+    using (bucket_id = 'review-photos');
+
+drop policy if exists "reviewers can upload their own review photos" on storage.objects;
+create policy "reviewers can upload their own review photos"
+    on storage.objects for insert
+    with check (bucket_id = 'review-photos' and auth.uid()::text = (storage.foldername(name))[1]);
 
 -- ============================================================================
 -- Helpful indexes

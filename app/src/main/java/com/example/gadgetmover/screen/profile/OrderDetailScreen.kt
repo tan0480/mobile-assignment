@@ -83,7 +83,8 @@ fun OrderDetailScreen(
     onDeleted: () -> Unit,
     onRequestReturnClick: () -> Unit = {},
     onReviewRequestClick: () -> Unit = {},
-    onWriteReviewClick: () -> Unit = {}
+    onWriteReviewClick: () -> Unit = {},
+    onProductClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -161,7 +162,7 @@ fun OrderDetailScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            ProductHeaderCard(order)
+            ProductHeaderCard(order, onClick = onProductClick)
             Spacer(modifier = Modifier.height(16.dp))
 
             SectionTitle("Order Info")
@@ -311,9 +312,12 @@ fun OrderDetailScreen(
 }
 
 @Composable
-private fun ProductHeaderCard(order: Order) {
+private fun ProductHeaderCard(order: Order, onClick: () -> Unit) {
     Card(shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(1.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             AsyncImage(
                 model = order.productImage,
                 contentDescription = order.productTitle,

@@ -31,6 +31,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -63,7 +64,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -311,19 +311,20 @@ fun CheckoutScreen(
                 }
             }
         )
-        Dialog(onDismissRequest = { showRentalDatePicker = false }) {
-            Card(shape = RoundedCornerShape(20.dp)) {
-                Column {
-                    DatePicker(state = datePickerState, modifier = Modifier.height(480.dp))
-                    Row(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { showRentalDatePicker = false }) { Text("Cancel") }
-                        TextButton(onClick = {
-                            datePickerState.selectedDateMillis?.let(viewModel::selectRentalStart)
-                            showRentalDatePicker = false
-                        }) { Text("Confirm") }
-                    }
-                }
+        DatePickerDialog(
+            onDismissRequest = { showRentalDatePicker = false },
+            modifier = Modifier.padding(horizontal = 40.dp),
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let(viewModel::selectRentalStart)
+                    showRentalDatePicker = false
+                }) { Text("Confirm") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRentalDatePicker = false }) { Text("Cancel") }
             }
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 
