@@ -120,17 +120,66 @@ fun DynamicFilterField(
         is FilterType.NumberRange -> {
             if (isListing) {
                 val unit = type.unit.trim()
+                val text = (value as? FilterFieldValue.NumberInput)?.value ?: ""
+                val entered = text.toFloatOrNull()
+                // The min/max shown in the placeholder is a worked example, not a hard limit — a seller's actual
+                // item can reasonably fall outside it — but a value must still be a real, sane number: greater
+                // than 0 and under 10x the example's upper bound, so a typo like an extra zero gets caught.
+                val upperBound = type.max * 10
+                val outOfBounds = entered != null && (entered <= 0f || entered >= upperBound)
                 NumberInputFieldWidget(
-                    placeholder = "${type.min.toInt()} – ${type.max.toInt()}",
+                    placeholder = "e.g. ${cleanNumberText(type.min)}-${cleanNumberText(type.max)}",
                     unit = unit,
-                    text = (value as? FilterFieldValue.NumberInput)?.value ?: "",
-                    onChange = { onValueChange(FilterFieldValue.NumberInput(it)) }
+                    text = text,
+                    onChange = { onValueChange(FilterFieldValue.NumberInput(it)) },
+                    isError = outOfBounds,
+                    supportingText = if (outOfBounds) "Enter a value greater than 0 and under ${cleanNumberText(upperBound)}$unit" else null,
+                    // Plenty of specs are fractional (screen size, thickness, sensitivity, driver size, ...) —
+                    // digits-only would silently block the decimal point for every one of them.
+                    allowDecimal = true
                 )
             } else {
                 NumberRangeField(
                     type = type,
                     range = (value as? FilterFieldValue.RangeInput)?.range ?: (type.min..type.max),
                     onChange = { onValueChange(FilterFieldValue.RangeInput(it)) }
+                )
+            }
+        }
+
+        is FilterType.NumberRangeWithUnitToggle -> {
+            if (isListing) {
+                val current = value as? FilterFieldValue.UnitNumberInput
+                val unit = current?.unit?.takeIf { it.isNotEmpty() } ?: type.units.first().unit
+                val active = type.units.find { it.unit == unit } ?: type.units.first()
+                val text = current?.value ?: ""
+                val entered = text.toFloatOrNull()
+                val upperBound = active.max * 10
+                val outOfBounds = entered != null && (entered <= 0f || entered >= upperBound)
+                Column {
+                    UnitToggleRow(units = type.units, selectedUnit = unit, onSelect = { newUnit ->
+                        onValueChange(FilterFieldValue.UnitNumberInput(newUnit, text))
+                    })
+                    NumberInputFieldWidget(
+                        placeholder = "e.g. ${cleanNumberText(active.min)}-${cleanNumberText(active.max)}",
+                        unit = active.unit,
+                        text = text,
+                        onChange = { onValueChange(FilterFieldValue.UnitNumberInput(unit, it)) },
+                        isError = outOfBounds,
+                        supportingText = if (outOfBounds) "Enter a value greater than 0 and under ${cleanNumberText(upperBound)}${active.unit}" else null,
+                        allowDecimal = true
+                    )
+                }
+            } else {
+                val current = value as? FilterFieldValue.UnitRangeInput
+                val unit = current?.unit?.takeIf { it.isNotEmpty() } ?: type.units.first().unit
+                val active = type.units.find { it.unit == unit } ?: type.units.first()
+                val range = current?.range ?: (active.min..active.max)
+                UnitNumberRangeField(
+                    type = type,
+                    unit = unit,
+                    range = range,
+                    onChange = { newUnit, newRange -> onValueChange(FilterFieldValue.UnitRangeInput(newUnit, newRange)) }
                 )
             }
         }
@@ -143,12 +192,25 @@ fun DynamicFilterField(
 
         FilterType.CameraSystemBuilder -> CameraSystemBuilderField(
             requirements = (value as? FilterFieldValue.CameraRequirements)?.items ?: emptyList(),
-            onChange = { onValueChange(FilterFieldValue.CameraRequirements(it)) }
+            onChange = { onValueChange(FilterFieldValue.CameraRequirements(it)) },
+            isListing = isListing
         )
 
         FilterType.PcieSlotBuilder -> PcieSlotBuilderField(
             requirements = (value as? FilterFieldValue.PcieSlotRequirements)?.items ?: emptyList(),
             onChange = { onValueChange(FilterFieldValue.PcieSlotRequirements(it)) }
+        )
+
+        FilterType.SwitchSystemBuilder -> SwitchSystemBuilderField(
+            requirements = (value as? FilterFieldValue.SwitchRequirements)?.items ?: emptyList(),
+            onChange = { onValueChange(FilterFieldValue.SwitchRequirements(it)) },
+            isListing = isListing
+        )
+
+        FilterType.VideoPortBuilder -> VideoPortSystemBuilderField(
+            requirements = (value as? FilterFieldValue.VideoPortRequirements)?.items ?: emptyList(),
+            onChange = { onValueChange(FilterFieldValue.VideoPortRequirements(it)) },
+            isListing = isListing
         )
     }
 }
@@ -305,19 +367,36 @@ fun NumberInputFieldWidget(
     placeholder: String,
     unit: String,
     text: String,
-    onChange: (String) -> Unit
+    onChange: (String) -> Unit,
+    isError: Boolean = false,
+    supportingText: String? = null,
+    /** Whether a decimal point is accepted — off for whole-count specs (e.g. a switch quantity), on for anything measured (screen size, thickness, sensitivity, ...) where forcing a whole number would just be wrong. */
+    allowDecimal: Boolean = false
 ) {
     OutlinedTextField(
         value = text,
-        onValueChange = { input -> if (input.all { it.isDigit() }) onChange(input) },
+        onValueChange = { input ->
+            val isValid = if (allowDecimal) {
+                input.count { it == '.' } <= 1 && input.all { it.isDigit() || it == '.' }
+            } else {
+                input.all { it.isDigit() }
+            }
+            if (isValid) onChange(input)
+        },
         modifier = Modifier.fillMaxWidth(),
         placeholder = { Text(placeholder) },
         suffix = { Text(unit) },
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        isError = isError,
+        supportingText = supportingText?.let { { Text(it) } },
+        keyboardOptions = KeyboardOptions(keyboardType = if (allowDecimal) KeyboardType.Decimal else KeyboardType.Number)
     )
 }
+
+/** Formats [value] without a trailing ".0" for whole numbers (e.g. "8" not "8.0"), but keeps real fractional precision (e.g. "5.4") — used for placeholder/bound text where the field's own [FilterType.NumberRange.min]/[max] may or may not be a whole number. */
+private fun cleanNumberText(value: Float): String =
+    if (value == value.toInt().toFloat()) value.toInt().toString() else value.toString()
 
 /** `FilterType.NumberRange` — a continuous dual-ended range, e.g. price or capacity bounds. */
 @Composable
@@ -336,6 +415,57 @@ fun NumberRangeField(
         value = range,
         onValueChange = onChange,
         valueRange = type.min..type.max,
+        steps = steps
+    )
+}
+
+/** The unit picker (e.g. "GB" / "TB") shown above a [FilterType.NumberRangeWithUnitToggle] field, in either listing or filter mode. */
+@Composable
+fun UnitToggleRow(units: List<FilterType.UnitRange>, selectedUnit: String, onSelect: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+        units.forEach { unitRange ->
+            val selected = unitRange.unit == selectedUnit
+            OutlinedButton(
+                onClick = { onSelect(unitRange.unit) },
+                shape = RoundedCornerShape(20.dp),
+                colors = if (selected) {
+                    androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        containerColor = BrandOrange.copy(alpha = 0.15f),
+                        contentColor = BrandOrange
+                    )
+                } else {
+                    androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
+                }
+            ) {
+                Text(unitRange.unit)
+            }
+        }
+    }
+}
+
+/** `FilterType.NumberRangeWithUnitToggle` (filter mode) — a [NumberRangeField]-style dual-ended range slider, but re-bounded to whichever [FilterType.UnitRange] is currently selected via [UnitToggleRow]. */
+@Composable
+fun UnitNumberRangeField(
+    type: FilterType.NumberRangeWithUnitToggle,
+    unit: String,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (unit: String, range: ClosedFloatingPointRange<Float>) -> Unit
+) {
+    val active = type.units.find { it.unit == unit } ?: type.units.first()
+    UnitToggleRow(units = type.units, selectedUnit = active.unit) { newUnit ->
+        val newActive = type.units.find { it.unit == newUnit } ?: return@UnitToggleRow
+        onChange(newUnit, newActive.min..newActive.max)
+    }
+    val steps = if (active.step > 0f) (((active.max - active.min) / active.step).toInt() - 1).coerceAtLeast(0) else 0
+    Text(
+        "${cleanNumberText(range.start)} ${active.unit} - ${cleanNumberText(range.endInclusive)} ${active.unit}",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    RangeSlider(
+        value = range,
+        onValueChange = { onChange(active.unit, it) },
+        valueRange = active.min..active.max,
         steps = steps
     )
 }

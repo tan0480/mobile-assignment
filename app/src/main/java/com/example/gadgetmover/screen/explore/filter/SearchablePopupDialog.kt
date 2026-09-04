@@ -1,9 +1,7 @@
 package com.example.gadgetmover.screen.explore.filter
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -192,18 +189,5 @@ private fun OptionRow(
         }
         Spacer(modifier = Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        if (isSelected && isMultiSelect) {
-            Box(
-                modifier = Modifier
-                    .background(BrandOrange.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-            ) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = BrandOrange,
-                    modifier = Modifier.padding(4.dp)
-                )
-            }
-        }
     }
 }

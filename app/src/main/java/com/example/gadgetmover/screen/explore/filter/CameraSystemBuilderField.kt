@@ -55,10 +55,17 @@ import java.util.UUID
  * 5x+ periscope telephoto without picking a predefined camera count first. Each card is one
  * independent [CameraRequirement]; see that type for what it stores.
  */
+/** A freshly added/role-reset requirement — [isListing] forces every numeric spec straight to [NumericRequirementMode.EXACT] so a seller describing one real physical device never lands on a "minimum" or "range" mode by default. */
+private fun defaultCameraRequirement(id: String, role: CameraRole = CameraRole.MAIN, isListing: Boolean): CameraRequirement {
+    val mode = if (isListing) NumericRequirementMode.EXACT else NumericRequirementMode.MINIMUM
+    return CameraRequirement(id = id, role = role, resolutionMode = mode, sensorSizeMode = mode, apertureMode = mode, zoomMode = mode)
+}
+
 @Composable
 fun CameraSystemBuilderField(
     requirements: List<CameraRequirement>,
-    onChange: (List<CameraRequirement>) -> Unit
+    onChange: (List<CameraRequirement>) -> Unit,
+    isListing: Boolean = false
 ) {
     var expandedIds by remember { mutableStateOf(setOf<String>()) }
 
@@ -76,6 +83,7 @@ fun CameraSystemBuilderField(
                     index = index,
                     requirement = requirement,
                     expanded = requirement.id in expandedIds,
+                    isListing = isListing,
                     onToggleExpand = {
                         expandedIds = if (requirement.id in expandedIds) expandedIds - requirement.id else expandedIds + requirement.id
                     },
@@ -93,7 +101,7 @@ fun CameraSystemBuilderField(
     if (requirements.size < MAX_CAMERA_REQUIREMENTS) {
         OutlinedButton(
             onClick = {
-                val added = CameraRequirement(id = UUID.randomUUID().toString())
+                val added = defaultCameraRequirement(id = UUID.randomUUID().toString(), isListing = isListing)
                 expandedIds = expandedIds + added.id
                 onChange(requirements + added)
             },
@@ -112,6 +120,7 @@ private fun CameraRequirementCard(
     index: Int,
     requirement: CameraRequirement,
     expanded: Boolean,
+    isListing: Boolean,
     onToggleExpand: () -> Unit,
     onChange: (CameraRequirement) -> Unit,
     onDelete: () -> Unit
@@ -160,7 +169,7 @@ private fun CameraRequirementCard(
                     onChange = { ids ->
                         val newRole = ids.firstOrNull()?.let { id -> CameraRole.entries.find { role -> role.name == id } } ?: requirement.role
                         // A role change resets every other field — a Telephoto's zoom value shouldn't silently carry over into a Main camera slot.
-                        onChange(CameraRequirement(id = requirement.id, role = newRole))
+                        onChange(defaultCameraRequirement(id = requirement.id, role = newRole, isListing = isListing))
                     }
                 )
 
@@ -178,7 +187,8 @@ private fun CameraRequirementCard(
                         onRangeChange = { newMin, newMax -> onChange(requirement.copy(resolutionMinMp = newMin, resolutionMaxMp = newMax)) },
                         unit = " MP",
                         sliderRange = 0f..200f,
-                        sliderDecimals = 0
+                        sliderDecimals = 0,
+                        isListing = isListing
                     )
                 }
 
@@ -190,7 +200,8 @@ private fun CameraRequirementCard(
                         onModeChange = { onChange(requirement.copy(sensorSizeMode = it)) },
                         exactId = requirement.sensorSizeExactId, onExactChange = { onChange(requirement.copy(sensorSizeExactId = it)) },
                         minId = requirement.sensorSizeMinId, onMinChange = { onChange(requirement.copy(sensorSizeMinId = it)) },
-                        maxId = requirement.sensorSizeMaxId, onMaxChange = { onChange(requirement.copy(sensorSizeMaxId = it)) }
+                        maxId = requirement.sensorSizeMaxId, onMaxChange = { onChange(requirement.copy(sensorSizeMaxId = it)) },
+                        isListing = isListing
                     )
                 }
 
@@ -206,7 +217,8 @@ private fun CameraRequirementCard(
                         onRangeChange = { newMin, newMax -> onChange(requirement.copy(apertureMinF = newMin, apertureMaxF = newMax)) },
                         unit = "", prefix = "f/",
                         sliderRange = 0.6f..8.0f,
-                        sliderDecimals = 2
+                        sliderDecimals = 2,
+                        isListing = isListing
                     )
                 }
 
@@ -233,7 +245,8 @@ private fun CameraRequirementCard(
                         onRangeChange = { newMin, newMax -> onChange(requirement.copy(zoomMin = newMin, zoomMax = newMax)) },
                         unit = "×",
                         sliderRange = 1f..100f,
-                        sliderDecimals = 1
+                        sliderDecimals = 1,
+                        isListing = isListing
                     )
                 }
 
@@ -294,8 +307,14 @@ private fun RangeableNumericField(
     unit: String,
     prefix: String = "",
     sliderRange: ClosedFloatingPointRange<Float>,
-    sliderDecimals: Int
+    sliderDecimals: Int,
+    /** A seller describing one real device always enters one concrete value — the Exact/Minimum/Range picker only makes sense for a buyer's search criteria, so it's hidden here and this always behaves as EXACT. */
+    isListing: Boolean = false
 ) {
+    if (isListing) {
+        DecimalInputField(placeholder = "Value", unit = unit, prefix = prefix, text = exact, onChange = onExactChange)
+        return
+    }
     ChipGroupField(
         options = NumericRequirementMode.entries.map { FilterOption(id = it.name, label = it.label) },
         isMultiSelect = false,
@@ -332,8 +351,18 @@ private fun RangeableSensorSizeField(
     onModeChange: (NumericRequirementMode) -> Unit,
     exactId: String?, onExactChange: (String?) -> Unit,
     minId: String?, onMinChange: (String?) -> Unit,
-    maxId: String?, onMaxChange: (String?) -> Unit
+    maxId: String?, onMaxChange: (String?) -> Unit,
+    isListing: Boolean = false
 ) {
+    if (isListing) {
+        ChipGroupField(
+            options = CameraSensorSizeOptions.all,
+            isMultiSelect = false,
+            selectedIds = exactId?.let { setOf(it) } ?: emptySet(),
+            onChange = { ids -> onExactChange(ids.firstOrNull()) }
+        )
+        return
+    }
     ChipGroupField(
         options = NumericRequirementMode.entries.map { FilterOption(id = it.name, label = it.label) },
         isMultiSelect = false,

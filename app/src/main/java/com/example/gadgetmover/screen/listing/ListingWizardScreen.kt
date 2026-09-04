@@ -112,6 +112,7 @@ import com.example.gadgetmover.model.filter.CategoryFilterRegistry
 import com.example.gadgetmover.model.filter.CategoryFilterState
 import com.example.gadgetmover.model.filter.FilterField
 import com.example.gadgetmover.model.filter.isFilled
+import com.example.gadgetmover.model.filter.isValidForListing
 import com.example.gadgetmover.model.filter.isVisible
 import com.example.gadgetmover.screen.checkout.ShippingTier
 import com.example.gadgetmover.screen.explore.filter.DynamicFilterField
@@ -911,7 +912,14 @@ private fun isStepValid(step: Int, draft: ListingDraft): Boolean = when (step) {
         draft.description.length <= DESCRIPTION_CHAR_LIMIT &&
         draft.fulfillmentMethods.isNotEmpty() &&
         (FulfillmentMethod.MEETUP !in draft.fulfillmentMethods || draft.meetupLocations.isNotEmpty())
-    3 -> requiredBrandField(draft.category)?.let { draft.categorySpecs.valueFor(it.key).isFilled(it) } ?: true
+    3 -> {
+        val brandFilled = requiredBrandField(draft.category)?.let { draft.categorySpecs.valueFor(it.key).isFilled(it) } ?: true
+        val schema = draft.category?.let { CategoryFilterRegistry.schemaFor(it) }
+        val specsInBounds = schema?.sections.orEmpty()
+            .filter { it.isVisible(draft.categorySpecs) }
+            .all { field -> draft.categorySpecs.valueFor(field.key).isValidForListing(field) }
+        brandFilled && specsInBounds
+    }
     5 -> validateListingNumbers(
         listingType = draft.listingType,
         price = draft.price,
