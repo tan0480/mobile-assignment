@@ -628,7 +628,8 @@ fun GadgetMoverNavGraph() {
                         onDeleted = { navController.popBackStack() },
                         onRequestReturnClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
                         onReviewRequestClick = { navController.navigate(Screen.ReturnRequest.createRoute(order.id)) },
-                        onWriteReviewClick = { navController.navigate(Screen.WriteReview.createRoute(order.id)) }
+                        onWriteReviewClick = { navController.navigate(Screen.WriteReview.createRoute(order.id)) },
+                        onProductClick = { navController.navigate(Screen.ProductDetail.createRoute(order.productId)) }
                     )
                 }
             }

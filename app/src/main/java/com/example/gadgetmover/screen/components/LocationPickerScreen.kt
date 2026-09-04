@@ -87,10 +87,18 @@ data class PickedLocation(
 private data class SearchResult(val primary: String, val secondary: String, val latLng: LatLng)
 
 private fun Address.toSearchResult(): SearchResult {
-    val full = getAddressLine(0) ?: "Unnamed location"
+    val full = addressLineWithoutCountry()
     val name = featureName
     val primary = if (!name.isNullOrBlank() && !full.startsWith(name)) name else full
     return SearchResult(primary = primary, secondary = full, latLng = LatLng(latitude, longitude))
+}
+
+/** [Address.getAddressLine] includes the country name as its final component — stripped here since a user picking a spot on the map already knows what country they're in and doesn't need it repeated in every address string. */
+private fun Address.addressLineWithoutCountry(): String {
+    val full = getAddressLine(0) ?: return "Unnamed location"
+    val country = countryName?.takeIf { it.isNotBlank() } ?: return full
+    if (!full.endsWith(country)) return full
+    return full.removeSuffix(country).trimEnd().trimEnd(',').trimEnd()
 }
 
 /**
@@ -397,7 +405,7 @@ private suspend fun reverseGeocode(context: android.content.Context, target: Lat
     try {
         @Suppress("DEPRECATION")
         val results = Geocoder(context, Locale.getDefault()).getFromLocation(target.latitude, target.longitude, 1)
-        results?.firstOrNull()?.getAddressLine(0) ?: "Unnamed location (${"%.5f".format(target.latitude)}, ${"%.5f".format(target.longitude)})"
+        results?.firstOrNull()?.addressLineWithoutCountry() ?: "Unnamed location (${"%.5f".format(target.latitude)}, ${"%.5f".format(target.longitude)})"
     } catch (e: Exception) {
         "Unnamed location (${"%.5f".format(target.latitude)}, ${"%.5f".format(target.longitude)})"
     }

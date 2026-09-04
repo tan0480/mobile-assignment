@@ -38,6 +38,7 @@ import com.example.gadgetmover.model.Condition
 import com.example.gadgetmover.model.ListingType
 import com.example.gadgetmover.util.formatMoney
 import com.example.gadgetmover.model.Product
+import com.example.gadgetmover.model.ProductStatus
 import com.example.gadgetmover.ui.theme.AccentLime
 import com.example.gadgetmover.ui.theme.BrandOrange
 import com.example.gadgetmover.ui.theme.SuccessGreen
@@ -108,6 +109,25 @@ fun ProductCard(
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
                     contentScale = ContentScale.Crop
                 )
+                if (product.status == ProductStatus.SOLD) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1.2f)
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                            .background(Color.Black.copy(alpha = 0.45f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(10.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text("SOLD", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
                 IconButton(
                     onClick = onSaveClick,
                     modifier = Modifier
